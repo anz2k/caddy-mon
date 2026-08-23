@@ -158,19 +158,26 @@ def refresh():
         return
 
     errors = []
-    routes = _get_json("/config/apps/http/servers/srv0/routes")
-    if "_error" in routes:
-        errors.append(f"Caddy admin API unreachable: {routes['_error']}")
+    # Read routes from ALL HTTP servers (srv0, srv1, ...), not just srv0.
+    servers_cfg = _get_json("/config/apps/http/servers")
+    if "_error" in servers_cfg:
+        errors.append(f"Caddy admin API unreachable: {servers_cfg['_error']}")
         _state["errors"] = errors
         return
 
-    # admin API returns the /routes endpoint as a bare list (not {"routes": [...]})
-    if isinstance(routes, list):
-        parsed = _parse_routes(routes)
-    elif isinstance(routes, dict) and "routes" in routes:
-        parsed = _parse_routes(routes["routes"])
-    else:
-        parsed = []
+    all_routes = []
+    if isinstance(servers_cfg, dict):
+        for srv_name, srv_cfg in servers_cfg.items():
+            if not isinstance(srv_cfg, dict):
+                continue
+            srv_routes = srv_cfg.get("routes", [])
+            if isinstance(srv_routes, list):
+                all_routes.extend(srv_routes)
+    elif isinstance(servers_cfg, list):
+        # fallback: treat the whole thing as a route list
+        all_routes = servers_cfg
+
+    parsed = _parse_routes(all_routes) if all_routes else []
 
     # /metrics is Prometheus text (not JSON), fetch it directly
     metrics_text = ""
