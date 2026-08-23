@@ -1,38 +1,68 @@
-# caddy-mon — minimal Caddy reverse-proxy visibility
+# caddy-mon
 
-Lihtne, Grafana-vaba vaade sinu Caddy proxy-le. Näitab ühel veebilehel iga
-proxitud saidi seisu: elab/katki, latents, viimane kontroll.
+Minimal Caddy reverse-proxy visibility dashboard. No Grafana, no Prometheus.
 
-## Mis see teeb
-- Küsib Caddy admin-API-st (`caddy-proxy:2019`) iga 10s:
-  - kõik ruudid + nende host-matcherid ja upstream-id
-  - `caddy_reverse_proxy_upstreams_healthy` mõõdik (0/1 iga upstreami kohta)
-- Teeb ise kiire HTTP GET proovi igale upstreamile (latents + HTTP staatus)
-- Serveerib veebilehte `:8080` (einfach: roheline/punane tuli iga saidi kohta)
+Shows one web page with the live status of every proxied site: alive/dead,
+latency, and last check time — pulled straight from the Caddy admin API.
 
-Ei kasuta Prometheusit, Grafanat ega TSDB-d. Ainult Caddy, mis sul juba on.
+## What it does
 
-## Käivitus (docker02, sinu kasutajana)
+- Polls the Caddy admin API (`caddy-proxy:2019`) every 10s for:
+  - all routes + their host matchers and upstream dials
+  - `caddy_reverse_proxy_upstreams_healthy` metric (0/1 per upstream)
+- Runs a self-made HTTP GET probe to each upstream (latency + status)
+- Serves a single web page on `:8080` (green/red light per site)
+
+No Prometheus, no Grafana, no TSDB. Just Caddy, which you already have.
+
+## How health is decided
+
+- **Caddy `healthy` metric is authoritative.** If Caddy says `healthy=1`,
+  the site is alive (a probe failure is treated as a false negative — e.g.
+  Immich does not answer plain HTTP, but Caddy knows it is up).
+- The probe is supplementary info (latency), not the decision maker.
+- If Caddy reports no health (None), the probe becomes the only signal.
+
+## Run (on docker02, as your user)
+
 ```bash
 cd ~/stacks/caddy-mon
 docker compose up -d --build
-# ava http://<server-ip>:8080
+# open http://<server-ip>:8080
 ```
 
-## Konfig
-`docker-compose.yml`:
-- liitub võrguga `caddy_default` (et `caddy-proxy` nimi laheneks DNS-is)
-- mountib `/home/andres.kaaber/stacks/caddy/logs` kirjutuskaitstud (logiotsing, valikuline)
-- pordi `8080` ei ole vaja WAN-i avada — vaid sisevõrgust
+## Config
 
-## Eemaldamine
+`docker-compose.yml`:
+- joins the `caddy_default` network (so `caddy-proxy` DNS resolves)
+- mounts `/home/andres.kaaber/stacks/caddy/logs` read-only (log inspection, optional)
+- port `8080` does not need to be exposed to WAN — LAN only
+
+## Caddy requirement
+
+The Caddy admin API must be reachable from this container. In `Caddyfile`,
+the global options block needs:
+
+```
+{
+    admin :2019
+}
+```
+
+(Without this, the admin API only listens on `localhost` and is unreachable
+from the `caddy-mon` container. Port 2019 is NOT published to the host, so
+it stays reachable only to containers on the `caddy_default` network.)
+
+## Remove
+
 ```bash
 docker compose down
 ```
 
-## Tehniline märkus
-Caddy `/metrics` ei sisalda `caddy_http_*` liiklusmõõdikuid (ainult
-admin/reverse_proxy_healthy + Go runtime), seega:
-- seis = `caddy_reverse_proxy_upstreams_healthy` (juba Caddy poolt arvutatud)
-- latents = ise tehtud GET proov (ei sõltu Caddy logist)
-- tulevikus: access.log parsimine (rate/4xx%) saab lisada ilma arhitektuuri muutmata
+## Technical note
+
+Caddy `/metrics` does **not** expose `caddy_http_*` traffic metrics (only
+admin/reverse_proxy_healthy + Go runtime). Therefore:
+- status = `caddy_reverse_proxy_upstreams_healthy` (already computed by Caddy)
+- latency = self-made GET probe (does not depend on Caddy logs)
+- future: access.log parsing (rate/4xx%) can be added without architecture changes

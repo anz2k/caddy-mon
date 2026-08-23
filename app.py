@@ -1,17 +1,17 @@
 """
 caddy-mon — minimal Caddy reverse-proxy visibility.
 
-Dockeris jookseb see samas võrgus kui caddy-proxy (caddy_default), seega
-DNS-nimi `caddy-proxy` laheneb ja admin-API (port 2019) on kättesaadav.
+Runs in the same Docker network as caddy-proxy (caddy_default), so the
+DNS name `caddy-proxy` resolves and the admin API (port 2019) is reachable.
 
-Andmeallikad:
+Data sources:
   - GET caddy-proxy:2019/config/apps/http/servers/srv0/routes
-        -> iga ruut: host-matcherid + reverse_proxy upstream-id
+        -> each route: host matchers + reverse_proxy upstream dial
   - GET caddy-proxy:2019/metrics
         -> caddy_reverse_proxy_upstreams_healthy{upstream="IP:port"} 0/1
-  - ise tehtud HTTP GET igale upstreamile -> latents + staatus (proov)
+  - self-made HTTP GET probe to each upstream -> latency + status
 
-Ei kasuta Prometheusit ega Grafanat.
+No Prometheus, no Grafana.
 """
 
 import json
@@ -25,12 +25,12 @@ from fastapi.responses import HTMLResponse
 TZ = ZoneInfo("Europe/Tallinn")
 
 CADDY_API = "http://caddy-proxy:2019"
-POLL_INTERVAL = 10  # sekundit
-PROBE_TIMEOUT = 3.0  # sekundit, üksik proov
+POLL_INTERVAL = 10  # seconds
+PROBE_TIMEOUT = 3.0  # seconds, single probe
 
 app = FastAPI()
 
-# Globaalne vahemälu (pole vaja andmebaasi)
+# In-memory cache (no database needed)
 _state = {
     "sites": [],
     "last_update": 0,
@@ -49,14 +49,14 @@ def _get_json(path: str):
 
 
 def _parse_routes(routes):
-    """Tagastab listi: {hosts:[...], upstreams:[...]}."""
+    """Return list of {hosts:[...], upstreams:[...]}."""
     out = []
     for r in routes or []:
         hosts = []
         ups = []
         for m in r.get("match", []) or []:
             hosts += m.get("host", [])
-        # reverse_proxy ülesotsimine (handle või terminal)
+        # find reverse_proxy handler (in handle or terminal)
         def walk(node):
             if isinstance(node, dict):
                 if node.get("handler") == "reverse_proxy":
@@ -93,12 +93,11 @@ def _parse_healthy(metrics_text: str):
 
 
 def _probe(upstream: str):
-    """Tee kiire GET proov. Tagastab (ok, status, ms)."""
-    # upstream on "IP:port"; eeldame http
-    scheme = "http"
+    """Quick GET probe. Returns (ok, status, ms, error)."""
+    # upstream is "IP:port"; assume http
     if upstream.startswith("https://") or upstream.startswith("http://"):
         return (False, 0, 0.0, "scheme_not_supported")
-    url = f"{scheme}://{upstream}"
+    url = f"http://{upstream}"
     try:
         start = time.monotonic()
         with httpx.Client(timeout=PROBE_TIMEOUT) as c:
@@ -117,11 +116,11 @@ def refresh():
     errors = []
     routes = _get_json("/config/apps/http/servers/srv0/routes")
     if "_error" in routes:
-        errors.append(f"Caddy admin-API kättesaamatu: {routes['_error']}")
+        errors.append(f"Caddy admin API unreachable: {routes['_error']}")
         _state["errors"] = errors
         return
 
-    # admin-API tagastab /routes all OTSE listi (mitte {"routes": [...]})
+    # admin API returns the /routes endpoint as a bare list (not {"routes": [...]})
     if isinstance(routes, list):
         parsed = _parse_routes(routes)
     elif isinstance(routes, dict) and "routes" in routes:
@@ -129,7 +128,7 @@ def refresh():
     else:
         parsed = []
 
-    # /metrics on Prometheus-tekst (mitte JSON), seega küsi otse
+    # /metrics is Prometheus text (not JSON), fetch it directly
     metrics_text = ""
     try:
         with httpx.Client(timeout=5.0) as c:
@@ -145,13 +144,13 @@ def refresh():
             ok, status, ms, err = _probe(up)
             up_probes.append({
                 "upstream": up,
-                "caddy_healthy": healthy.get(up),  # None = ei tea
+                "caddy_healthy": healthy.get(up),  # None = unknown
                 "probe_ok": ok,
                 "status": status,
                 "ms": ms,
                 "error": err,
             })
-        # Sait on "elav" kui kõik upstreamid on OK (Caddy healthy=1 või proov õnnestus)
+        # Site is alive if every upstream is OK (Caddy healthy=1 or probe succeeds)
         alive = all(
             (u["caddy_healthy"] is True) or (u["probe_ok"] and u["status"] < 500)
             for u in up_probes
@@ -165,9 +164,9 @@ def refresh():
             "latency_ms": worst_ms,
         })
 
-    # JÄRJESTUS: fikseeritud = Caddy routes järjekord (Caddyfile'i järjekord).
-    # Ei sorteeri elavuse järgi, muidu hüppavad kaardid iga refreshi juures üles-alla.
-    # (kui tahad katkised ees, eemalda see rida ja lülita sisse sortimine allpool)
+    # ORDERING: fixed = Caddy route order (Caddyfile order).
+    # Do not sort by health, otherwise cards jump up/down on every refresh.
+    # (if you want dead-first, remove this comment and enable sorting below)
     # sites.sort(key=lambda x: (x["alive"], -x["latency_ms"]))
 
     _state["sites"] = sites
@@ -189,19 +188,19 @@ def dashboard(request: Request):
         up_html = ""
         for u in s["upstreams"]:
             if u["caddy_healthy"] is True:
-                badge = "✓ Caddy healthy"
+                badge = "Caddy healthy"
                 bcolor = "#16a34a"
             elif u["caddy_healthy"] is False:
-                badge = "✗ Caddy UNhealthy"
+                badge = "Caddy UNhealthy"
                 bcolor = "#dc2626"
             else:
                 badge = "?"
                 bcolor = "#6b7280"
-            # Kui Caddy ütleb healthy=1, siis proovi viga on valetüüpiline
-            # (nt Immich ei vasta plain HTTP-le) -> ära näita seda punasena.
-            # Kui Caddy ei raporteeri healthi (None), siis proov on ainus info.
+            # If Caddy reports healthy=1, a probe failure is a false negative
+            # (e.g. Immich doesn't answer plain HTTP) -> don't show it as a failure.
+            # If Caddy reports no health (None), the probe is our only signal.
             show_probe_err = (not u["probe_ok"]) and (u["caddy_healthy"] is None)
-            probe = f"{u['status']} / {u['ms']}ms" if u["probe_ok"] else (f"proov ebaõnnestus: {u['error']}" if show_probe_err else "Caddy: elab")
+            probe = f"{u['status']} / {u['ms']}ms" if u["probe_ok"] else (f"probe failed: {u['error']}" if show_probe_err else "Caddy: alive")
             up_html += f"""
               <div class="up">
                 <span class="badge" style="background:{bcolor}">{badge}</span>
@@ -213,14 +212,14 @@ def dashboard(request: Request):
           <div class="card" style="border-left:6px solid {color}">
             <div class="host">{s['primary_host']}</div>
             <div class="hosts-all">{hosts}</div>
-            <div class="status" style="color:{color}">{('ELAB' if s['alive'] else 'KATKI')} · {s['latency_ms']}ms</div>
+            <div class="status" style="color:{color}">{('ALIVE' if s['alive'] else 'DEAD')} · {s['latency_ms']}ms</div>
             {up_html}
           </div>"""
 
     err_html = "".join(f"<p class='err'>⚠ {e}</p>" for e in errors)
 
     html = f"""<!doctype html>
-<html lang="et"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caddy Mon</title>
 <style>
@@ -242,11 +241,11 @@ def dashboard(request: Request):
 </style></head>
 <body>
   <h1>Caddy Mon</h1>
-  <div class="sub">Caddy reverse-proxy reaalajas seis · {total} saiti · {alive} elab · uuendatud {datetime.now(TZ).strftime('%H:%M:%S')}</div>
+  <div class="sub">Caddy reverse-proxy live status · {total} sites · {alive} alive · updated {datetime.now(TZ).strftime('%H:%M:%S')}</div>
   {err_html}
   <div class="grid">{cards}</div>
   <script>
-    // Auto-refresh iga 12s
+    // Auto-refresh every 12s
     setTimeout(() => location.reload(), 12000);
   </script>
 </body></html>"""
