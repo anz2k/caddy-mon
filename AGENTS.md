@@ -20,7 +20,7 @@ Use these to verify your work before declaring a task finished:
   - `/config/apps/http/servers/srv0/routes` for routes + upstreams
   - `/metrics` for `caddy_reverse_proxy_upstreams_healthy{upstream="IP:port"}` (0/1)
 - **Health logic:** Caddy `healthy` metric is authoritative. A failed self-probe is a false negative (e.g. Immich does not answer plain HTTP). If Caddy reports no health (`None`), the probe becomes the only signal.
-- **No hardcoded IPs:** Never put real LAN IPs (e.g. `192.168.x.x`) or hostnames (e.g. `docker02`) in the repo. Use placeholders like `<upstream-ip>` or `<deployment-dir>` in docs.
+- **No hardcoded infra:** Never put real LAN IPs (e.g. `192.168.x.x`) or internal hostnames in the repo. Use placeholders like `<upstream-ip>` or `<deployment-dir>` in docs.
 - **Example pattern (parsing healthy metric):**
 ```python
 def _parse_healthy(metrics_text: str) -> dict:
