@@ -294,11 +294,16 @@ def dashboard(request: Request):
                     <code>{u['upstream']}</code>
                     <span class="probe">{probe}</span>
                   </div>"""
-            hosts = " · ".join(s["hosts"])
+            aliases = [h for h in s["hosts"] if h != s["primary_host"]]
+            hosts_html = f'<div class="host">{s["primary_host"]}</div>'
+            if aliases:
+                hosts_html += '<div class="aliases"><span class="aliases-label">also:</span>'
+                for a in aliases:
+                    hosts_html += f'<div class="alias">↳ {a}</div>'
+                hosts_html += '</div>'
             cards += f"""
               <div class="card" style="border-left:6px solid {color}">
-                <div class="host">{s['primary_host']}</div>
-                <div class="hosts-all">{hosts}</div>
+                {hosts_html}
                 <div class="status" style="color:{color}">{('ALIVE' if s['alive'] else 'DEAD')} · {s['latency_ms']}ms</div>
                 {up_html}
               </div>"""
@@ -324,7 +329,9 @@ def dashboard(request: Request):
   .domain-group h2 {{ font-size:15px; color:#9ca3af; margin:0 0 12px; font-weight:600; border-bottom:1px solid #2a2d35; padding-bottom:6px; }}
   .card {{ background:#1a1d24; border-radius:10px; padding:14px 16px; }}
   .host {{ font-weight:600; font-size:16px; }}
-  .hosts-all {{ color:#9ca3af; font-size:11px; margin-bottom:6px; word-break:break-all; }}
+  .aliases { margin-bottom:6px; }
+  .aliases-label { color:#6b7280; font-size:11px; font-weight:600; }
+  .alias { color:#9ca3af; font-size:11px; padding-left:8px; word-break:break-all; }
   .status {{ font-weight:700; font-size:14px; margin-bottom:8px; }}
   .up {{ display:flex; align-items:center; gap:8px; font-size:12px; margin-top:6px; flex-wrap:wrap; }}
   .badge {{ color:#fff; padding:2px 6px; border-radius:5px; font-size:11px; white-space:nowrap; }}
