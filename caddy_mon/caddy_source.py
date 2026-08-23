@@ -33,12 +33,13 @@ def _parse_routes(routes):
     out = []
 
     def walk(node, inherited_paths):
+        nonlocal branches
         if isinstance(node, dict):
             if node.get("handler") == "reverse_proxy":
                 ups = [u.get("dial") for u in node.get("upstreams", []) if u.get("dial")]
                 paths = inherited_paths or ["/"]
                 for p in paths:
-                    out.append({"paths": [p], "upstreams": ups})
+                    branches.append({"paths": [p], "upstreams": ups})
             routes_block = node.get("routes")
             if isinstance(routes_block, list):
                 for sub in routes_block:
