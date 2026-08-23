@@ -94,6 +94,15 @@ def _parse_routes(routes):
         # Flatten: if no path-specific branches, treat as root path "/"
         if not branches:
             branches = [{"paths": ["/"], "upstreams": []}]
+        # Deduplicate identical (paths, upstreams) branches
+        seen = set()
+        deduped = []
+        for b in branches:
+            key = (tuple(b["paths"]), tuple(b["upstreams"]))
+            if key not in seen:
+                seen.add(key)
+                deduped.append(b)
+        branches = deduped
         # Aggregate upstreams across branches for the site-level view
         all_ups = []
         for b in branches:
