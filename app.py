@@ -152,10 +152,39 @@ def _probe(upstream: str):
         return (False, 0, 0.0, str(e)[:80])
 
 
+def _host_log_stats(host, window=3600):
+    """Return compact log stats for one host over `window` seconds.
+
+    Returns {"requests": int, "errors_5xx": int, "error_pct": float} or None
+    if the host has no log entries in the window.
+    """
+    _ingest_logs()
+    now = time.time()
+    cutoff = now - window
+    req = 0
+    err = 0
+    for e in _LOG_CACHE:
+        ts = e["ts"]
+        if ts is None or ts < cutoff:
+            continue
+        if e["host"] != host:
+            continue
+        req += 1
+        st = e["status"]
+        if isinstance(st, int) and st >= 500:
+            err += 1
+    if req == 0:
+        return None
+    return {"requests": req, "errors_5xx": err, "error_pct": round(err / req * 100, 1)}
+
+
 def refresh():
     now = time.time()
     if now - _state["last_update"] < POLL_INTERVAL and _state["sites"]:
         return
+
+    # Refresh access-log cache so per-host stats are current on the dashboard
+    _ingest_logs()
 
     errors = []
     # Read routes from ALL HTTP servers (srv0, srv1, ...), not just srv0.
@@ -223,6 +252,7 @@ def refresh():
         alive = all(upstream_ok(u) for u in up_probes)
         worst_ms = max((u["ms"] for u in up_probes if u["probe_ok"]), default=0.0)
         group = _tld_group(s["hosts"][0])
+        log = _host_log_stats(s["hosts"][0], window=3600)
         sites.append({
             "hosts": s["hosts"],
             "primary_host": s["hosts"][0],
@@ -231,6 +261,7 @@ def refresh():
             "upstreams": up_probes,
             "alive": alive,
             "latency_ms": worst_ms,
+            "log": log,
         })
 
     # ORDERING: fixed = Caddy route order (Caddyfile order).
@@ -301,11 +332,20 @@ def dashboard(request: Request):
                 for a in aliases:
                     hosts_html += f'<div class="alias">↳ {a}</div>'
                 hosts_html += '</div>'
+            # Compact log stats line under the card
+            log = s.get("log")
+            if log:
+                log_color = "#f87171" if log["errors_5xx"] > 0 else "#6b7280"
+                log_html = (f'<div class="logstat" style="color:{log_color}">'
+                            f'📊 {log["requests"]} req · {log["errors_5xx"]} 5xx ({log["error_pct"]}%)</div>')
+            else:
+                log_html = '<div class="logstat" style="color:#6b7280">📊 no traffic (1h)</div>'
             cards += f"""
               <div class="card" style="border-left:6px solid {color}">
                 {hosts_html}
                 <div class="status" style="color:{color}">{('ALIVE' if s['alive'] else 'DEAD')} · {s['latency_ms']}ms</div>
                 {up_html}
+                {log_html}
               </div>"""
         groups_html += f"""
           <div class="domain-group">
@@ -331,7 +371,8 @@ def dashboard(request: Request):
   .host {{ font-weight:600; font-size:16px; }}
   .aliases {{ margin-bottom:6px; }}
   .aliases-label {{ color:#6b7280; font-size:11px; font-weight:600; }}
-  .alias {{ color:#9ca3af; font-size:11px; padding-left:8px; word-break:break-all; }}
+  .alias { color:#9ca3af; font-size:11px; padding-left:8px; word-break:break-all; }
+  .logstat {{ font-size:11px; margin-top:8px; color:#6b7280; }}
   .status {{ font-weight:700; font-size:14px; margin-bottom:8px; }}
   .up {{ display:flex; align-items:center; gap:8px; font-size:12px; margin-top:6px; flex-wrap:wrap; }}
   .badge {{ color:#fff; padding:2px 6px; border-radius:5px; font-size:11px; white-space:nowrap; }}
