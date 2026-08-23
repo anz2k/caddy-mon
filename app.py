@@ -587,6 +587,16 @@ def api_logs(window: int = 3600):
     return _log_stats(window=window)
 
 
+@app.get("/api/debug_log")
+def api_debug_log():
+    return {
+        "log_path": _LOG_PATH,
+        "offset": _LOG_OFFSET,
+        "cache_len": len(_LOG_CACHE),
+        "cache_sample": _LOG_CACHE[:3],
+    }
+
+
 @app.get("/logs", response_class=HTMLResponse)
 def logs_page(request: Request, window: int = 3600):
     data = _log_stats(window=window)
