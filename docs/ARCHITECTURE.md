@@ -21,8 +21,17 @@ Browser (LAN, http://<host>:8080)
 3. It reads `GET caddy-proxy:2019/metrics` and parses
    `caddy_reverse_proxy_upstreams_healthy{upstream="IP:port"} 0|1`.
 4. It runs a self-made HTTP GET probe to each upstream (for latency).
-5. Health is decided: Caddy `healthy=1` wins; a probe failure is a false negative.
+5. Health is decided by combining Caddy `healthy` with the probe: if Caddy
+   says healthy=1 but the probe gets connection refused, the site is dead
+   (stale Caddy signal). A probe timeout with healthy=1 is still alive.
 6. Result is cached in `_state` for `POLL_INTERVAL` (10s) to avoid hammering Caddy.
+
+## Multi-server Caddy support
+
+caddy-mon reads routes from **all** Caddy HTTP servers
+(`/config/apps/http/servers` → each `srv0`, `srv1`, ... → `.routes`), not just
+`srv0`. Your Caddy may define multiple servers (e.g. for different listen
+ports or site groups). All are merged into the dashboard/topology view.
 
 ## Endpoints
 

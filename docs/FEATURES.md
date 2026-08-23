@@ -14,14 +14,26 @@ dashboard route renders an HTML grid. The same data is available as JSON at
 
 **Why:** Gives immediate visibility into proxy health without Grafana/Prometheus.
 
-## Caddy-authoritative health
+## Health decision logic
 
-**What it adds:** Site health is taken from Caddy's
-`caddy_reverse_proxy_upstreams_healthy` metric, not from caddy-mon's own probe.
+**What it adds:** Site health combines Caddy's `caddy_reverse_proxy_upstreams_healthy`
+metric with caddy-mon's own HTTP probe, so a stale Caddy health signal does not
+hide a dead backend.
 
-**How it works:** `_parse_healthy()` extracts the 0/1 value per upstream from
-`/metrics`. In the site decision, `caddy_healthy is True` means alive
-regardless of probe result.
+**How it works:** For each upstream, the site is considered dead if:
+- Caddy reports `healthy=0` (unhealthy), OR
+- Caddy reports `healthy=1` but the probe gets **connection refused** (Caddy's
+  health check was stale/wrong), OR
+- Caddy reports no health (`None`) and the probe fails.
+
+If Caddy reports `healthy=1` and the probe fails with a **timeout** (not
+connection refused), the site is still treated as alive — Caddy knows the
+backend state better than a single probe. If Caddy gives no signal (`None`),
+the probe is the only source of truth.
+
+**Why:** Example — if a backend container crashes, Caddy's `healthy` metric
+may lag (still showing `1`) while the port is already refusing connections.
+The combined check catches this immediately instead of showing a false "alive".
 
 **Why:** Caddy knows the real backend state (including TLS/protocol quirks).
 A self-probe can fail for reasons Caddy has already accounted for.

@@ -13,6 +13,8 @@ latency, and last check time — pulled straight from the Caddy admin API.
 - **Fixed site order** — cards stay in Caddyfile route order, no shuffling on refresh
 - **False-negative handling** — sites Caddy marks healthy are shown alive even if the probe fails
 - **Route topology** — SVG map of host → path → Caddy proxy → upstream (at `/topology`), supports path-based routing and multi-upstream
+- **Multi-server Caddy** — reads routes from all Caddy HTTP servers (srv0, srv1, ...), not just srv0
+- **Combined health** — Caddy `healthy` metric + self-probe; connection-refused overrides a stale healthy=1
 
 See [docs/](docs/) for architecture and per-feature details.
 
