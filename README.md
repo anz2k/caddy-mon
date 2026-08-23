@@ -23,13 +23,15 @@ No Prometheus, no Grafana, no TSDB. Just Caddy, which you already have.
 - The probe is supplementary info (latency), not the decision maker.
 - If Caddy reports no health (None), the probe becomes the only signal.
 
-## Run (on docker02, as your user)
+## Run
 
 ```bash
-cd ~/stacks/caddy-mon
+cd <deployment-dir>
 docker compose up -d --build
-# open http://<server-ip>:8080
+# then open the dashboard in a browser on port 8080
 ```
+
+(`<deployment-dir>` is the directory on the host where this container runs.)
 
 ## Config
 

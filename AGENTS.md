@@ -20,15 +20,16 @@ language (e.g. Estonian, Polish, etc.) anywhere in the repo.
 
 ## How to contribute
 
-1. Edit files locally in `~/GIT/caddy-mon/` (the dev checkout; the server
-   deployment copy lives at `~/stacks/caddy-mon/` on docker02).
+1. Edit files locally in your dev checkout of this repo.
 2. Commit and push to `main` on GitHub (`anz2k/caddy-mon`).
-3. After pushing, the server (docker02, `<server-ip>`) is updated automatically
-   by the agent with:
+3. After pushing, the deployment host is updated automatically by the agent with:
    ```bash
-   cd ~/stacks/caddy-mon && git pull && docker compose up -d --build
+   cd <deployment-dir> && git pull && docker compose up -d --build
    ```
    You do NOT need to ask for permission to rebuild after a push.
+
+   (`<deployment-dir>` is the directory on the host where this container runs;
+   it is a clone of this repo and is not part of the public source.)
 
 ## API reference
 
