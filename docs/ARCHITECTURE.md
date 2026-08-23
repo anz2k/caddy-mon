@@ -81,11 +81,20 @@ admin + reverse_proxy_healthy + Go runtime). So:
 - The deployment directory is a clone of this repo; `git pull && docker compose
   up -d --build` applies updates.
 
-## Files
+## Code layout
 
-| File | Responsibility |
-|------|---------------|
-| `app.py` | FastAPI app: Caddy polling, health logic, log ingestion, all HTML pages |
-| `Dockerfile` | Python 3.12-slim + FastAPI/uvicorn/httpx |
-| `docker-compose.yml` | network join, port 8080, log mount, `CADDY_API` env |
-| `AGENTS.md` | instructions for AI agents contributing to this repo |
+The app is split into a small `caddy_mon` package; `app.py` is only a thin
+FastAPI entry point that wires the modules together.
+
+| Module | Responsibility |
+|--------|---------------|
+| `app.py` | FastAPI app: registers routes, imports the package modules |
+| `caddy_mon/config.py` | `CADDY_API`, `POLL_INTERVAL`, `PROBE_TIMEOUT`, `LOG_PATH`, `TZ` |
+| `caddy_mon/caddy_source.py` | Caddy admin API: `_get_json`, `_parse_routes`, `_parse_healthy`, `_probe`, `refresh()`, `_state`, TLD grouping |
+| `caddy_mon/log_source.py` | Access-log ingestion: `ingest_logs()`, `host_log_stats()`, `log_stats()`, in-memory cache |
+| `caddy_mon/dashboard.py` | Dashboard HTML page + `/api/state` |
+| `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
+| `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
+
+Add a new page by creating a module with a render function + API, then
+registering both in `app.py`.
