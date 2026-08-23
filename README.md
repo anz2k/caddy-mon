@@ -8,33 +8,37 @@ latency, and last check time — pulled straight from the Caddy admin API.
 ## Features
 
 - **Health dashboard** — live alive/dead + latency per proxied site, auto-refresh every 12s
-- **Caddy-authoritative health** — uses `caddy_reverse_proxy_upstreams_healthy`, not a self-probe
-- **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
-- **Fixed site order** — cards stay in Caddyfile route order, no shuffling on refresh
-- **False-negative handling** — sites Caddy marks healthy are shown alive even if the probe fails
 - **Route topology** — SVG map of host → path → Caddy proxy → upstream (at `/topology`), supports path-based routing and multi-upstream
 - **Multi-server Caddy** — reads routes from all Caddy HTTP servers (srv0, srv1, ...), not just srv0
 - **Combined health** — Caddy `healthy` metric + self-probe; connection-refused overrides a stale healthy=1
+- **Log analytics** — per-host request/5xx/error% over a time window (at `/logs`, JSON at `/api/logs`)
+- **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
+- **Domain grouping** — sites grouped by parent domain (lope.ee, kaaber.ee, lope.lan) on the dashboard
+- **Alias listing** — extra hostnames on a route are shown as a bulleted list under the primary host
 
 See [docs/](docs/) for architecture and per-feature details.
 
 ## What it does
 
 - Polls the Caddy admin API (`caddy-proxy:2019`) every 10s for:
-  - all routes + their host matchers and upstream dials
+  - all routes + their host matchers and upstream dials (from ALL servers, srv0/srv1/...)
   - `caddy_reverse_proxy_upstreams_healthy` metric (0/1 per upstream)
 - Runs a self-made HTTP GET probe to each upstream (latency + status)
-- Serves a single web page on `:8080` (green/red light per site)
+- Reads the Caddy access log (`/caddy-logs/access.log`) for request/error analytics
+- Serves web pages on `:8080` (dashboard, topology, logs)
 
 No Prometheus, no Grafana, no TSDB. Just Caddy, which you already have.
 
 ## How health is decided
 
-- **Caddy `healthy` metric is authoritative.** If Caddy says `healthy=1`,
-  the site is alive (a probe failure is treated as a false negative — e.g.
-  Immich does not answer plain HTTP, but Caddy knows it is up).
-- The probe is supplementary info (latency), not the decision maker.
-- If Caddy reports no health (None), the probe becomes the only signal.
+Health combines Caddy's `healthy` metric with caddy-mon's own probe:
+
+- Caddy reports `healthy=0` → site is **DEAD**
+- Caddy reports `healthy=1` but the probe gets **connection refused** → site is
+  **DEAD** (Caddy's health check was stale/wrong)
+- Caddy reports `healthy=1` and the probe fails with a timeout (not refused) →
+  site is **ALIVE** (Caddy knows the backend state)
+- Caddy reports no health (`None`) → the probe is the only signal
 
 ## Run
 
@@ -50,8 +54,9 @@ docker compose up -d --build
 
 `docker-compose.yml`:
 - joins the `caddy_default` network (so `caddy-proxy` DNS resolves)
-- optionally mounts the Caddy access-log directory read-only (for future log analytics)
+- mounts the Caddy access-log directory read-only at `/caddy-logs` (for log analytics)
 - port `8080` does not need to be exposed to WAN — LAN only
+- `CADDY_API` env var overrides the admin API URL (default `http://caddy-proxy:2019`)
 
 ## Caddy requirement
 
@@ -67,12 +72,6 @@ the global options block needs:
 (Without this, the admin API only listens on `localhost` and is unreachable
 from the `caddy-mon` container. Port 2019 is NOT published to the host, so
 it stays reachable only to containers on the `caddy_default` network.)
-
-## Remove
-
-```bash
-docker compose down
-```
 
 ## Documentation
 

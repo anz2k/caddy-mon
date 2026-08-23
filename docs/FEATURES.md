@@ -6,11 +6,13 @@ Detailed writeups of each caddy-mon feature.
 
 **What it adds:** A single web page showing every proxied site as a card with
 alive/dead status (green/red), latency in ms, and the last-update timestamp.
-Auto-refreshes every 12 seconds.
+Auto-refreshes every 12 seconds. Sites are grouped by parent domain
+(lope.ee, kaaber.ee, lope.lan), and extra hostnames (aliases) on a route are
+shown as a bulleted list under the primary host.
 
 **How it works:** `refresh()` polls Caddy, builds the site list, and the
-dashboard route renders an HTML grid. The same data is available as JSON at
-`/api/state` for external consumers.
+dashboard route renders an HTML grid grouped by TLD. The same data is available
+as JSON at `/api/state` for external consumers.
 
 **Why:** Gives immediate visibility into proxy health without Grafana/Prometheus.
 
@@ -35,45 +37,6 @@ the probe is the only source of truth.
 may lag (still showing `1`) while the port is already refusing connections.
 The combined check catches this immediately instead of showing a false "alive".
 
-**Why:** Caddy knows the real backend state (including TLS/protocol quirks).
-A self-probe can fail for reasons Caddy has already accounted for.
-
-## Local timezone
-
-**What it adds:** The "updated" timestamp on the dashboard uses the host's
-local timezone instead of UTC.
-
-**How it works:** `TZ = ZoneInfo("Europe/Tallinn")` and
-`datetime.now(TZ).strftime(...)`. The container has `tzdata` installed so
-`ZoneInfo` resolves.
-
-**Why:** The server runs in UTC but the user is in a different zone; a UTC
-timestamp is confusing ("why does it say 07:23 when it's 10:23?").
-
-## Fixed site order
-
-**What it adds:** Site cards stay in the order defined by the Caddyfile
-(Caddy route order), and do not shuffle on every refresh.
-
-**How it works:** `refresh()` does NOT sort by health. The list order follows
-the route list from the admin API, which mirrors the Caddyfile.
-
-**Why:** Sorting by health made cards jump up/down on every 12s refresh,
-which was visually distracting.
-
-## False-negative handling
-
-**What it adds:** If Caddy reports `healthy=1` but the self-probe fails, the
-site is shown as alive (not "probe FAIL").
-
-**How it works:** In the card renderer, a probe error is only displayed when
-`caddy_healthy is None` (Caddy gave no health signal). When Caddy says healthy,
-the probe error is suppressed and "Caddy: alive" is shown instead.
-
-**Why:** Example — Immich (`pildid.lope.ee`) does not answer plain HTTP on its
-port, so the probe fails, but Caddy knows it is up. Showing "FAIL" there was
-a false alarm.
-
 ## Route topology
 
 **What it adds:** A visual map of how traffic flows:
@@ -91,9 +54,38 @@ renders a 4-column SVG (no external graph library).
 e.g. `example.ee/` → service A, `example.ee/api` → service B. Useful for
 complex Caddy configs, not just simple host→upstream maps.
 
----
+## Log analytics
+
+**What it adds:** A per-host request summary over a configurable time window,
+visible at `/logs` (auto-refreshes every 30s) with JSON at `/api/logs?window=N`
+(seconds, default 3600). Shows requests, 5xx count, error %, and average latency
+per host, sorted by error rate. Also lists recent 5xx errors with timestamp,
+host, status, and URI.
+
+**How it works:** `_ingest_logs()` tails `/caddy-logs/access.log` (Caddy JSON
+access log) incrementally — it tracks file position + inode so a log rotation
+restarts cleanly, and filters out caddy-mon's own `admin.api` polling noise.
+Parsed entries are kept in an in-memory ring buffer (last ~5000). `_log_stats()`
+aggregates entries within the window into per-host stats.
+
+**Why:** Surfaces backend errors that health checks miss — e.g. "pildid.lope.ee
+returned 502 N times in the last hour" shows up here even if Caddy still
+reports the upstream as healthy.
+
+## Multi-server Caddy support
+
+**What it adds:** caddy-mon reads routes from **all** Caddy HTTP servers
+(`/config/apps/http/servers` → each `srv0`, `srv1`, ... → `.routes`), not just
+a hardcoded `srv0`.
+
+**How it works:** `refresh()` fetches the full servers map and merges routes
+from every server into the site list. This matters when your Caddy defines
+multiple servers (e.g. for different listen ports or site groups).
+
+**Why:** A single-server assumption silently drops sites defined on `srv1`,
+`srv2`, etc.
 
 ## Planned / future (not yet implemented)
 
 See the development plan (private, not in this repo) for the backlog:
-route map / topology, log analytics, TLS expiry tracking, Telegram alerts.
+TLS expiry tracking, Telegram alerts.
