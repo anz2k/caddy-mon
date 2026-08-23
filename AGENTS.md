@@ -14,9 +14,9 @@ container that runs on the same Docker network as `caddy-proxy` (`caddy_default`
 ## Language rule (IMPORTANT)
 
 This is a **public repo**. All code, comments, docstrings, UI strings, and
-documentation MUST be in **English**. Do NOT write Estonian text anywhere in
-the repo (code, comments, README, UI labels). The user communicates in
-Estonian in chat, but the repo is English-only.
+documentation MUST be in **English**. Write all repo content in English
+regardless of what language the user/chat uses. Do not add text in any other
+language (e.g. Estonian, Polish, etc.) anywhere in the repo.
 
 ## How to contribute
 
