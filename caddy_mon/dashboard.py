@@ -7,6 +7,52 @@ from .caddy_source import _state, refresh, _group_hosts_by_tld
 from datetime import datetime
 
 
+def _render_card(s):
+    """Render one site card as HTML."""
+    color = "#16a34a" if s["alive"] else "#dc2626"
+    up_html = ""
+    for u in s["upstreams"]:
+        if u["caddy_healthy"] is True:
+            badge = "Caddy healthy"
+            bcolor = "#16a34a"
+        elif u["caddy_healthy"] is False:
+            badge = "Caddy UNhealthy"
+            bcolor = "#dc2626"
+        else:
+            badge = "?"
+            bcolor = "#6b7280"
+        show_probe_err = (not u["probe_ok"]) and (u["caddy_healthy"] is None)
+        probe = f"{u['status']} / {u['ms']}ms" if u["probe_ok"] else (
+            f"probe failed: {u['error']}" if show_probe_err else "Caddy: alive")
+        up_html += f"""
+          <div class="up">
+            <span class="badge" style="background:{bcolor}">{badge}</span>
+            <code>{u['upstream']}</code>
+            <span class="probe">{probe}</span>
+          </div>"""
+    aliases = [h for h in s["hosts"] if h != s["primary_host"]]
+    hosts_html = f'<div class="host">{s["primary_host"]}</div>'
+    if aliases:
+        hosts_html += '<div class="aliases"><span class="aliases-label">also:</span>'
+        for a in aliases:
+            hosts_html += f'<div class="alias">↳ {a}</div>'
+        hosts_html += '</div>'
+    log = s.get("log")
+    if log:
+        log_color = "#f87171" if log["errors_5xx"] > 0 else "#6b7280"
+        log_html = (f'<div class="logstat" style="color:{log_color}">'
+                    f'📊 {log["requests"]} req · {log["errors_5xx"]} 5xx ({log["error_pct"]}%)</div>')
+    else:
+        log_html = '<div class="logstat" style="color:#6b7280">📊 no traffic (1h)</div>'
+    return f"""
+      <div class="card" style="border-left:6px solid {color}">
+        {hosts_html}
+        <div class="status" style="color:{color}">{('ALIVE' if s['alive'] else 'DEAD')} · {s['latency_ms']}ms</div>
+        {up_html}
+        {log_html}
+      </div>"""
+
+
 def dashboard(request: Request):
     refresh()
     sites = _state["sites"]
@@ -15,54 +61,9 @@ def dashboard(request: Request):
     total = sum(len(g["sites"]) for g in grouped)
     alive = sum(1 for g in grouped for s in g["sites"] if s["alive"])
 
-    cards = ""
-    for g in grouped:
-        for s in g["sites"]:
-            color = "#16a34a" if s["alive"] else "#dc2626"
-            up_html = ""
-            for u in s["upstreams"]:
-                if u["caddy_healthy"] is True:
-                    badge = "Caddy healthy"
-                    bcolor = "#16a34a"
-                elif u["caddy_healthy"] is False:
-                    badge = "Caddy UNhealthy"
-                    bcolor = "#dc2626"
-                else:
-                    badge = "?"
-                    bcolor = "#6b7280"
-                show_probe_err = (not u["probe_ok"]) and (u["caddy_healthy"] is None)
-                probe = f"{u['status']} / {u['ms']}ms" if u["probe_ok"] else (
-                    f"probe failed: {u['error']}" if show_probe_err else "Caddy: alive")
-                up_html += f"""
-                  <div class="up">
-                    <span class="badge" style="background:{bcolor}">{badge}</span>
-                    <code>{u['upstream']}</code>
-                    <span class="probe">{probe}</span>
-                  </div>"""
-            aliases = [h for h in s["hosts"] if h != s["primary_host"]]
-            hosts_html = f'<div class="host">{s["primary_host"]}</div>'
-            if aliases:
-                hosts_html += '<div class="aliases"><span class="aliases-label">also:</span>'
-                for a in aliases:
-                    hosts_html += f'<div class="alias">↳ {a}</div>'
-                hosts_html += '</div>'
-            log = s.get("log")
-            if log:
-                log_color = "#f87171" if log["errors_5xx"] > 0 else "#6b7280"
-                log_html = (f'<div class="logstat" style="color:{log_color}">'
-                            f'📊 {log["requests"]} req · {log["errors_5xx"]} 5xx ({log["error_pct"]}%)</div>')
-            else:
-                log_html = '<div class="logstat" style="color:#6b7280">📊 no traffic (1h)</div>'
-            cards += f"""
-              <div class="card" style="border-left:6px solid {color}">
-                {hosts_html}
-                <div class="status" style="color:{color}">{('ALIVE' if s['alive'] else 'DEAD')} · {s['latency_ms']}ms</div>
-                {up_html}
-                {log_html}
-              </div>"""
-
     groups_html = ""
     for g in grouped:
+        cards = "".join(_render_card(s) for s in g["sites"])
         groups_html += f"""
           <div class="domain-group">
             <h2>{g['group']}</h2>
