@@ -22,9 +22,11 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 
+import os
+
 TZ = ZoneInfo("Europe/Tallinn")
 
-CADDY_API = "http://caddy-proxy:2019"
+CADDY_API = os.environ.get("CADDY_API", "http://caddy-proxy:2019")
 POLL_INTERVAL = 10  # seconds
 PROBE_TIMEOUT = 3.0  # seconds, single probe
 
