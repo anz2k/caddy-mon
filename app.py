@@ -201,11 +201,26 @@ def refresh():
                 "ms": ms,
                 "error": err,
             })
-        # Site is alive if every upstream is OK (Caddy healthy=1 or probe succeeds)
-        alive = all(
-            (u["caddy_healthy"] is True) or (u["probe_ok"] and u["status"] < 500)
-            for u in up_probes
-        )
+        # A site/upstream is considered dead if:
+        # - Caddy reports unhealthy (healthy=False), OR
+        # - Caddy reports healthy but the probe gets connection refused
+        #   (Caddy's health check was stale/wrong), OR
+        # - Caddy gives no health signal (None) and the probe fails.
+        # A probe timeout (not connection refused) with Caddy healthy=True
+        # is still treated as alive (Caddy knows the backend state).
+        def upstream_ok(u):
+            h = u["caddy_healthy"]
+            if h is False:
+                return False
+            if h is True:
+                # healthy=1 but probe failed -> only dead if connection refused
+                if (not u["probe_ok"]) and "refused" in (u["error"] or "").lower():
+                    return False
+                return True
+            # h is None: trust the probe
+            return u["probe_ok"] and u["status"] < 500
+
+        alive = all(upstream_ok(u) for u in up_probes)
         worst_ms = max((u["ms"] for u in up_probes if u["probe_ok"]), default=0.0)
         group = _tld_group(s["hosts"][0])
         sites.append({
