@@ -156,9 +156,11 @@ def refresh():
             for u in up_probes
         )
         worst_ms = max((u["ms"] for u in up_probes if u["probe_ok"]), default=0.0)
+        group = _tld_group(s["hosts"][0])
         sites.append({
             "hosts": s["hosts"],
             "primary_host": s["hosts"][0],
+            "group": group,
             "upstreams": up_probes,
             "alive": alive,
             "latency_ms": worst_ms,
@@ -181,6 +183,12 @@ def _group_hosts_by_tld(sites):
         g = groups.setdefault(s["group"], {"group": s["group"], "sites": []})
         g["sites"].append(s)
     return sorted(groups.values(), key=lambda x: x["group"])
+
+
+def _tld_group(host: str) -> str:
+    """Return the group key for a host: the last two labels (e.g. lope.ee)."""
+    parts = host.split(".")
+    return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
 
 @app.get("/", response_class=HTMLResponse)
