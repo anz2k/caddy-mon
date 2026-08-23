@@ -285,7 +285,7 @@ def api_topology():
         add_node(site_id, s["primary_host"], 0, "host")
         # proxy node (the reverse_proxy handler)
         proxy_id = f"proxy:{s['primary_host']}"
-        add_node(proxy_id, "reverse_proxy", 1, "proxy")
+        add_node(proxy_id, "Caddy proxy", 1, "proxy")
         edges.append({"from": site_id, "to": proxy_id, "healthy": s["alive"]})
         for u in s["upstreams"]:
             up_id = f"up:{u['upstream']}"
