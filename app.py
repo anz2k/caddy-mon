@@ -275,9 +275,9 @@ def api_topology():
     edges = []
     node_ids = set()
 
-    def add_node(nid, label, col, kind):
+    def add_node(nid, label, col, kind, healthy=None):
         if nid not in node_ids:
-            nodes.append({"id": nid, "label": label, "col": col, "kind": kind})
+            nodes.append({"id": nid, "label": label, "col": col, "kind": kind, "healthy": healthy})
             node_ids.add(nid)
 
     for s in _state["sites"]:
@@ -286,10 +286,10 @@ def api_topology():
         # proxy node (the reverse_proxy handler)
         proxy_id = f"proxy:{s['primary_host']}"
         add_node(proxy_id, "reverse_proxy", 1, "proxy")
-        edges.append({"from": site_id, "to": proxy_id})
+        edges.append({"from": site_id, "to": proxy_id, "healthy": s["alive"]})
         for u in s["upstreams"]:
             up_id = f"up:{u['upstream']}"
-            add_node(up_id, u["upstream"], 2, "upstream")
+            add_node(up_id, u["upstream"], 2, "upstream", healthy=u["caddy_healthy"])
             edges.append({"from": proxy_id, "to": up_id, "healthy": u["caddy_healthy"]})
     return {"nodes": nodes, "edges": edges}
 
@@ -331,7 +331,13 @@ def topology(request: Request):
         elif n["kind"] == "proxy":
             fill, stroke = "#3f6212", "#84cc16"
         else:
-            fill, stroke = "#3a1e1e", "#f87171"
+            h = n.get("healthy")
+            if h is True:
+                fill, stroke = "#14321f", "#16a34a"
+            elif h is False:
+                fill, stroke = "#3a1e1e", "#f87171"
+            else:
+                fill, stroke = "#2a2a2a", "#9ca3af"
         svg.append(f'<g><rect x="{x}" y="{y}" width="150" height="36" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>'
                    f'<text x="{x+75}" y="{y+22}" fill="#e5e7eb" font-size="12" text-anchor="middle" font-family="system-ui">{n["label"][:22]}</text></g>')
     svg.append('<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#9ca3af"/></marker></defs>')
@@ -359,7 +365,9 @@ def topology(request: Request):
   <div class="legend">
     <span><i class="box" style="background:#3b82f6"></i> host</span>
     <span><i class="box" style="background:#84cc16"></i> reverse_proxy</span>
+    <span><i class="box" style="background:#16a34a"></i> upstream (green=healthy)</span>
     <span><i class="box" style="background:#f87171"></i> upstream (red=unhealthy)</span>
+    <span><i class="box" style="background:#9ca3af"></i> upstream (gray=unknown)</span>
   </div>
   {''.join(svg)}
   <script>
