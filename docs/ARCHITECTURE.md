@@ -24,6 +24,15 @@ Browser (LAN, http://<host>:8080)
 5. Health is decided: Caddy `healthy=1` wins; a probe failure is a false negative.
 6. Result is cached in `_state` for `POLL_INTERVAL` (10s) to avoid hammering Caddy.
 
+## Endpoints
+
+| Route | Purpose |
+|-------|---------|
+| `GET /` | HTML dashboard (cards, auto-refresh 12s) |
+| `GET /api/state` | JSON: `{last_update, sites[], errors[]}` |
+| `GET /topology` | HTML SVG route map (host → proxy → upstream) |
+| `GET /api/topology` | JSON: `{nodes[], edges[]}` for the route map |
+
 ## Why no Prometheus/Grafana
 
 Caddy `/metrics` does **not** expose `caddy_http_*` traffic counters (only

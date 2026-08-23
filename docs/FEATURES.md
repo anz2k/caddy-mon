@@ -62,6 +62,21 @@ the probe error is suppressed and "Caddy: alive" is shown instead.
 port, so the probe fails, but Caddy knows it is up. Showing "FAIL" there was
 a false alarm.
 
+## Route topology
+
+**What it adds:** A visual map of how traffic flows:
+`host` → `reverse_proxy` → `upstream IP:port`. Available at `/topology`
+(auto-refreshes every 12s). Also exposed as JSON at `/api/topology`.
+
+**How it works:** `_api_topology()` builds nodes (host on the left, one
+`reverse_proxy` node per site in the middle, each upstream dial on the right)
+and edges (host → proxy → upstream). The `/topology` route computes a simple
+3-column layout (no external graph library) and renders an SVG with colored
+nodes: blue = host, green = proxy, red = unhealthy upstream.
+
+**Why:** Gives a quick visual overview of what each domain points to, without
+reading the Caddyfile by hand. Useful when you have many services.
+
 ---
 
 ## Planned / future (not yet implemented)
