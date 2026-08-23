@@ -5,6 +5,16 @@ Minimal Caddy reverse-proxy visibility dashboard. No Grafana, no Prometheus.
 Shows one web page with the live status of every proxied site: alive/dead,
 latency, and last check time — pulled straight from the Caddy admin API.
 
+## Features
+
+- **Health dashboard** — live alive/dead + latency per proxied site, auto-refresh every 12s
+- **Caddy-authoritative health** — uses `caddy_reverse_proxy_upstreams_healthy`, not a self-probe
+- **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
+- **Fixed site order** — cards stay in Caddyfile route order, no shuffling on refresh
+- **False-negative handling** — sites Caddy marks healthy are shown alive even if the probe fails
+
+See [docs/](docs/) for architecture and per-feature details.
+
 ## What it does
 
 - Polls the Caddy admin API (`caddy-proxy:2019`) every 10s for:
@@ -37,7 +47,7 @@ docker compose up -d --build
 
 `docker-compose.yml`:
 - joins the `caddy_default` network (so `caddy-proxy` DNS resolves)
-- mounts `/home/andres.kaaber/stacks/caddy/logs` read-only (log inspection, optional)
+- optionally mounts the Caddy access-log directory read-only (for future log analytics)
 - port `8080` does not need to be exposed to WAN — LAN only
 
 ## Caddy requirement
@@ -61,10 +71,7 @@ it stays reachable only to containers on the `caddy_default` network.)
 docker compose down
 ```
 
-## Technical note
+## Documentation
 
-Caddy `/metrics` does **not** expose `caddy_http_*` traffic metrics (only
-admin/reverse_proxy_healthy + Go runtime). Therefore:
-- status = `caddy_reverse_proxy_upstreams_healthy` (already computed by Caddy)
-- latency = self-made GET probe (does not depend on Caddy logs)
-- future: access.log parsing (rate/4xx%) can be added without architecture changes
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how caddy-mon works internally
+- [docs/FEATURES.md](docs/FEATURES.md) — detailed per-feature writeups
