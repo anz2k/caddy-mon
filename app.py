@@ -174,46 +174,63 @@ def refresh():
     _state["errors"] = errors
 
 
+def _group_hosts_by_tld(sites):
+    """Group sites by their parent domain (TLD-group) for display."""
+    groups = {}
+    for s in sites:
+        g = groups.setdefault(s["group"], {"group": s["group"], "sites": []})
+        g["sites"].append(s)
+    return sorted(groups.values(), key=lambda x: x["group"])
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     refresh()
     sites = _state["sites"]
     errors = _state["errors"]
-    total = len(sites)
-    alive = sum(1 for s in sites if s["alive"])
+    grouped = _group_hosts_by_tld(sites)
+    total = sum(len(g["sites"]) for g in grouped)
+    alive = sum(1 for g in grouped for s in g["sites"] if s["alive"])
 
-    cards = ""
-    for s in sites:
-        color = "#16a34a" if s["alive"] else "#dc2626"
-        up_html = ""
-        for u in s["upstreams"]:
-            if u["caddy_healthy"] is True:
-                badge = "Caddy healthy"
-                bcolor = "#16a34a"
-            elif u["caddy_healthy"] is False:
-                badge = "Caddy UNhealthy"
-                bcolor = "#dc2626"
-            else:
-                badge = "?"
-                bcolor = "#6b7280"
-            # If Caddy reports healthy=1, a probe failure is a false negative
-            # (e.g. Immich doesn't answer plain HTTP) -> don't show it as a failure.
-            # If Caddy reports no health (None), the probe is our only signal.
-            show_probe_err = (not u["probe_ok"]) and (u["caddy_healthy"] is None)
-            probe = f"{u['status']} / {u['ms']}ms" if u["probe_ok"] else (f"probe failed: {u['error']}" if show_probe_err else "Caddy: alive")
-            up_html += f"""
-              <div class="up">
-                <span class="badge" style="background:{bcolor}">{badge}</span>
-                <code>{u['upstream']}</code>
-                <span class="probe">{probe}</span>
+    groups_html = ""
+    for g in grouped:
+        cards = ""
+        for s in g["sites"]:
+            color = "#16a34a" if s["alive"] else "#dc2626"
+            up_html = ""
+            for u in s["upstreams"]:
+                if u["caddy_healthy"] is True:
+                    badge = "Caddy healthy"
+                    bcolor = "#16a34a"
+                elif u["caddy_healthy"] is False:
+                    badge = "Caddy UNhealthy"
+                    bcolor = "#dc2626"
+                else:
+                    badge = "?"
+                    bcolor = "#6b7280"
+                # If Caddy reports healthy=1, a probe failure is a false negative
+                # (e.g. Immich doesn't answer plain HTTP) -> don't show it as a failure.
+                # If Caddy reports no health (None), the probe is our only signal.
+                show_probe_err = (not u["probe_ok"]) and (u["caddy_healthy"] is None)
+                probe = f"{u['status']} / {u['ms']}ms" if u["probe_ok"] else (f"probe failed: {u['error']}" if show_probe_err else "Caddy: alive")
+                up_html += f"""
+                  <div class="up">
+                    <span class="badge" style="background:{bcolor}">{badge}</span>
+                    <code>{u['upstream']}</code>
+                    <span class="probe">{probe}</span>
+                  </div>"""
+            hosts = " · ".join(s["hosts"])
+            cards += f"""
+              <div class="card" style="border-left:6px solid {color}">
+                <div class="host">{s['primary_host']}</div>
+                <div class="hosts-all">{hosts}</div>
+                <div class="status" style="color:{color}">{('ALIVE' if s['alive'] else 'DEAD')} · {s['latency_ms']}ms</div>
+                {up_html}
               </div>"""
-        hosts = " · ".join(s["hosts"])
-        cards += f"""
-          <div class="card" style="border-left:6px solid {color}">
-            <div class="host">{s['primary_host']}</div>
-            <div class="hosts-all">{hosts}</div>
-            <div class="status" style="color:{color}">{('ALIVE' if s['alive'] else 'DEAD')} · {s['latency_ms']}ms</div>
-            {up_html}
+        groups_html += f"""
+          <div class="domain-group">
+            <h2>{g['group']}</h2>
+            <div class="grid">{cards}</div>
           </div>"""
 
     err_html = "".join(f"<p class='err'>⚠ {e}</p>" for e in errors)
@@ -228,6 +245,8 @@ def dashboard(request: Request):
   h1 {{ font-size:20px; margin:0 0 4px; }}
   .sub {{ color:#9ca3af; font-size:13px; margin-bottom:20px; }}
   .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }}
+  .domain-group {{ margin-bottom:28px; }}
+  .domain-group h2 {{ font-size:15px; color:#9ca3af; margin:0 0 12px; font-weight:600; border-bottom:1px solid #2a2d35; padding-bottom:6px; }}
   .card {{ background:#1a1d24; border-radius:10px; padding:14px 16px; }}
   .host {{ font-weight:600; font-size:16px; }}
   .hosts-all {{ color:#9ca3af; font-size:11px; margin-bottom:6px; word-break:break-all; }}
@@ -243,7 +262,7 @@ def dashboard(request: Request):
   <h1>Caddy Mon</h1>
   <div class="sub">Caddy reverse-proxy live status · {total} sites · {alive} alive · updated {datetime.now(TZ).strftime('%H:%M:%S')} · <a href="/topology" style="color:#60a5fa">topology</a></div>
   {err_html}
-  <div class="grid">{cards}</div>
+  <div class="groups">{groups_html}</div>
   <script>
     // Auto-refresh every 12s
     setTimeout(() => location.reload(), 12000);
