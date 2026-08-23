@@ -11,7 +11,7 @@ latency, and last check time — pulled straight from the Caddy admin API.
 - **Route topology** — SVG map of host → path → Caddy proxy → upstream (at `/topology`), supports path-based routing and multi-upstream
 - **Multi-server Caddy** — reads routes from all Caddy HTTP servers (srv0, srv1, ...), not just srv0
 - **Combined health** — Caddy `healthy` metric + self-probe; connection-refused overrides a stale healthy=1
-- **Log analytics** — per-host request/5xx/error% over a time window (at `/logs`, JSON at `/api/logs`)
+- **Log analytics** — per-host request/5xx/error% over a time window (compact line on each dashboard card + full view at `/logs`, JSON at `/api/logs`)
 - **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
 - **Domain grouping** — sites grouped by parent domain (lope.ee, kaaber.ee, lope.lan) on the dashboard
 - **Alias listing** — extra hostnames on a route are shown as a bulleted list under the primary host

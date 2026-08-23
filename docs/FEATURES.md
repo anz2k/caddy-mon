@@ -56,11 +56,12 @@ complex Caddy configs, not just simple host→upstream maps.
 
 ## Log analytics
 
-**What it adds:** A per-host request summary over a configurable time window,
-visible at `/logs` (auto-refreshes every 30s) with JSON at `/api/logs?window=N`
-(seconds, default 3600). Shows requests, 5xx count, error %, and average latency
-per host, sorted by error rate. Also lists recent 5xx errors with timestamp,
-host, status, and URI.
+**What it adds:** A per-host request summary over a configurable time window.
+A compact one-line summary (requests · 5xx · error%) appears **under each
+card on the dashboard** (red if there are 5xx errors, gray otherwise), and a
+full table view is available at `/logs` (auto-refreshes every 30s) with JSON
+at `/api/logs?window=N` (seconds, default 3600). The full view also lists
+recent 5xx errors with timestamp, host, status, and URI.
 
 **How it works:** `_ingest_logs()` tails `/caddy-logs/access.log` (Caddy JSON
 access log) incrementally — it tracks file position + inode so a log rotation
