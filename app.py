@@ -49,29 +49,62 @@ def _get_json(path: str):
 
 
 def _parse_routes(routes):
-    """Return list of {hosts:[...], upstreams:[...]}."""
+    """Return list of {hosts:[...], paths:[...], upstreams:[...]}.
+
+    Supports nested `subroute` handlers and path matchers. A path matcher
+    scoped to a reverse_proxy branch is paired with that branch's upstreams.
+    """
     out = []
     for r in routes or []:
         hosts = []
-        ups = []
         for m in r.get("match", []) or []:
             hosts += m.get("host", [])
-        # find reverse_proxy handler (in handle or terminal)
-        def walk(node):
+        # Collect (paths, upstreams) pairs walking the handler tree.
+        # Each reverse_proxy node we encounter gets the nearest enclosing
+        # path matchers (from its own branch or inherited from parents).
+        branches = []  # list of {"paths": [...], "upstreams": [...]}
+
+        def walk(node, inherited_paths):
             if isinstance(node, dict):
+                # path matchers on this node
+                node_paths = []
+                for m in node.get("match", []) or []:
+                    node_paths += m.get("path", [])
+                paths = inherited_paths + node_paths
                 if node.get("handler") == "reverse_proxy":
-                    for u in node.get("upstreams", []):
-                        if u.get("dial"):
-                            ups.append(u["dial"])
+                    ups = [u["dial"] for u in node.get("upstreams", []) if u.get("dial")]
+                    branches.append({"paths": paths, "upstreams": ups})
+                # recurse into children
+                for key in ("handle", "terminal", "routes", "subroutes"):
+                    if key in node:
+                        walk(node[key], paths)
+                # also recurse into any other dict/list values (defensive)
                 for v in node.values():
-                    walk(v)
+                    if isinstance(v, (dict, list)) and not any(k in node for k in ("handle", "terminal", "routes", "subroutes")):
+                        walk(v, paths)
             elif isinstance(node, list):
                 for x in node:
-                    walk(x)
-        walk(r.get("handle"))
-        walk(r.get("terminal"))
-        if hosts and ups:
-            out.append({"hosts": hosts, "upstreams": ups})
+                    walk(x, inherited_paths)
+
+        walk(r.get("handle"), [])
+        walk(r.get("terminal"), [])
+
+        # Flatten: if no path-specific branches, treat as root path "/"
+        if not branches:
+            branches = [{"paths": ["/"], "upstreams": []}]
+        # Aggregate upstreams across branches for the site-level view
+        all_ups = []
+        for b in branches:
+            for u in b["upstreams"]:
+                if u not in all_ups:
+                    all_ups.append(u)
+
+        if hosts:
+            out.append({
+                "hosts": hosts,
+                "paths": branches,
+                "upstreams": all_ups,
+            })
     return out
 
 
@@ -161,6 +194,7 @@ def refresh():
             "hosts": s["hosts"],
             "primary_host": s["hosts"][0],
             "group": group,
+            "paths": s["paths"],
             "upstreams": up_probes,
             "alive": alive,
             "latency_ms": worst_ms,
@@ -293,9 +327,9 @@ def api_state():
 def api_topology():
     """Return graph nodes + edges for the route map.
 
-    Nodes: each host (left), one proxy node per site (middle),
-    each upstream dial (right).
-    Edges: host -> proxy -> upstream.
+    Nodes: each host (left), each path matcher (left-mid), one proxy node
+    per (site, path) branch (middle), each upstream dial (right).
+    Edges: host -> path -> proxy -> upstream.
     """
     refresh()
     nodes = []
@@ -310,14 +344,24 @@ def api_topology():
     for s in _state["sites"]:
         site_id = f"site:{s['primary_host']}"
         add_node(site_id, s["primary_host"], 0, "host")
-        # proxy node (the reverse_proxy handler)
-        proxy_id = f"proxy:{s['primary_host']}"
-        add_node(proxy_id, "Caddy proxy", 1, "proxy")
-        edges.append({"from": site_id, "to": proxy_id, "healthy": s["alive"]})
-        for u in s["upstreams"]:
-            up_id = f"up:{u['upstream']}"
-            add_node(up_id, u["upstream"], 2, "upstream", healthy=u["caddy_healthy"])
-            edges.append({"from": proxy_id, "to": up_id, "healthy": u["caddy_healthy"]})
+        for branch in s["paths"]:
+            path_label = ", ".join(branch["paths"]) if branch["paths"] else "/"
+            path_id = f"path:{s['primary_host']}:{path_label}"
+            add_node(path_id, path_label, 1, "path")
+            edges.append({"from": site_id, "to": path_id, "healthy": s["alive"]})
+            proxy_id = f"proxy:{s['primary_host']}:{path_label}"
+            add_node(proxy_id, "Caddy proxy", 2, "proxy")
+            edges.append({"from": path_id, "to": proxy_id, "healthy": s["alive"]})
+            for up in branch["upstreams"]:
+                up_id = f"up:{up}"
+                # find caddy_healthy for this upstream from site's upstreams list
+                chealthy = None
+                for u in s["upstreams"]:
+                    if u["upstream"] == up:
+                        chealthy = u["caddy_healthy"]
+                        break
+                add_node(up_id, up, 3, "upstream", healthy=chealthy)
+                edges.append({"from": proxy_id, "to": up_id, "healthy": chealthy})
     return {"nodes": nodes, "edges": edges}
 
 
@@ -328,9 +372,9 @@ def topology(request: Request):
     nodes = data["nodes"]
     edges = data["edges"]
 
-    # Layout: 3 columns (x by col), stacked vertically per column
-    col_x = {0: 40, 1: 320, 2: 600}
-    col_cursor = {0: 20, 1: 20, 2: 20}
+    # Layout: 4 columns (x by col), stacked vertically per column
+    col_x = {0: 40, 1: 280, 2: 520, 3: 760}
+    col_cursor = {0: 20, 1: 20, 2: 20, 3: 20}
     row_h = 46
     pos = {}
     for n in nodes:
@@ -340,7 +384,7 @@ def topology(request: Request):
 
     # SVG dimensions
     max_y = max((y for _, y in pos.values()), default=100) + 60
-    width = 900
+    width = 920
     height = max_y
 
     svg = [f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">']
@@ -355,6 +399,8 @@ def topology(request: Request):
         x, y = pos[n["id"]]
         if n["kind"] == "host":
             fill, stroke = "#1e3a5f", "#3b82f6"
+        elif n["kind"] == "path":
+            fill, stroke = "#3a2f1e", "#f59e0b"
         elif n["kind"] == "proxy":
             fill, stroke = "#3f6212", "#84cc16"
         else:
@@ -391,7 +437,8 @@ def topology(request: Request):
   <div class="sub">{total} sites · {alive} alive · updated {datetime.now(TZ).strftime('%H:%M:%S')} · <a href="/">dashboard</a></div>
   <div class="legend">
     <span><i class="box" style="background:#3b82f6"></i> host</span>
-    <span><i class="box" style="background:#84cc16"></i> reverse_proxy</span>
+    <span><i class="box" style="background:#f59e0b"></i> path</span>
+    <span><i class="box" style="background:#84cc16"></i> Caddy proxy</span>
     <span><i class="box" style="background:#16a34a"></i> upstream (green=healthy)</span>
     <span><i class="box" style="background:#f87171"></i> upstream (red=unhealthy)</span>
     <span><i class="box" style="background:#9ca3af"></i> upstream (gray=unknown)</span>
