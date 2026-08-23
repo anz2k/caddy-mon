@@ -329,9 +329,9 @@ def dashboard(request: Request):
   .domain-group h2 {{ font-size:15px; color:#9ca3af; margin:0 0 12px; font-weight:600; border-bottom:1px solid #2a2d35; padding-bottom:6px; }}
   .card {{ background:#1a1d24; border-radius:10px; padding:14px 16px; }}
   .host {{ font-weight:600; font-size:16px; }}
-  .aliases { margin-bottom:6px; }
-  .aliases-label { color:#6b7280; font-size:11px; font-weight:600; }
-  .alias { color:#9ca3af; font-size:11px; padding-left:8px; word-break:break-all; }
+  .aliases {{ margin-bottom:6px; }}
+  .aliases-label {{ color:#6b7280; font-size:11px; font-weight:600; }}
+  .alias {{ color:#9ca3af; font-size:11px; padding-left:8px; word-break:break-all; }}
   .status {{ font-weight:700; font-size:14px; margin-bottom:8px; }}
   .up {{ display:flex; align-items:center; gap:8px; font-size:12px; margin-top:6px; flex-wrap:wrap; }}
   .badge {{ color:#fff; padding:2px 6px; border-radius:5px; font-size:11px; white-space:nowrap; }}
