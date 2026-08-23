@@ -12,7 +12,7 @@ latency, and last check time — pulled straight from the Caddy admin API.
 - **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
 - **Fixed site order** — cards stay in Caddyfile route order, no shuffling on refresh
 - **False-negative handling** — sites Caddy marks healthy are shown alive even if the probe fails
-- **Route topology** — SVG map of host → reverse_proxy → upstream (at `/topology`)
+- **Route topology** — SVG map of host → path → Caddy proxy → upstream (at `/topology`), supports path-based routing and multi-upstream
 
 See [docs/](docs/) for architecture and per-feature details.
 

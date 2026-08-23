@@ -65,17 +65,19 @@ a false alarm.
 ## Route topology
 
 **What it adds:** A visual map of how traffic flows:
-`host` → `reverse_proxy` → `upstream IP:port`. Available at `/topology`
+`host` → `path` → `Caddy proxy` → `upstream IP:port`. Available at `/topology`
 (auto-refreshes every 12s). Also exposed as JSON at `/api/topology`.
 
-**How it works:** `_api_topology()` builds nodes (host on the left, one
-`reverse_proxy` node per site in the middle, each upstream dial on the right)
-and edges (host → proxy → upstream). The `/topology` route computes a simple
-3-column layout (no external graph library) and renders an SVG with colored
-nodes: blue = host, green = proxy, red = unhealthy upstream.
+**How it works:** `_parse_routes()` walks the Caddy route tree recursively
+(supporting nested `subroute` handlers and path matchers). For each site it
+collects `(path, upstreams)` branches. `api_topology()` builds graph nodes:
+host (left), path matcher (mid-left), Caddy proxy (mid-right), upstream dial
+(right), with edges host → path → proxy → upstream. The `/topology` route
+renders a 4-column SVG (no external graph library).
 
-**Why:** Gives a quick visual overview of what each domain points to, without
-reading the Caddyfile by hand. Useful when you have many services.
+**Why:** Shows path-based routing and multi-upstream setups at a glance —
+e.g. `example.ee/` → service A, `example.ee/api` → service B. Useful for
+complex Caddy configs, not just simple host→upstream maps.
 
 ---
 

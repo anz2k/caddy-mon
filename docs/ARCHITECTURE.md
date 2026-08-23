@@ -30,7 +30,7 @@ Browser (LAN, http://<host>:8080)
 |-------|---------|
 | `GET /` | HTML dashboard (cards, auto-refresh 12s) |
 | `GET /api/state` | JSON: `{last_update, sites[], errors[]}` |
-| `GET /topology` | HTML SVG route map (host → proxy → upstream) |
+| `GET /topology` | HTML SVG route map (host → path → Caddy proxy → upstream) |
 | `GET /api/topology` | JSON: `{nodes[], edges[]}` for the route map |
 
 ## Why no Prometheus/Grafana
