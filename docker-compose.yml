@@ -1,0 +1,18 @@
+services:
+  caddy-mon:
+    build: .
+    image: caddy-mon:local
+    container_name: caddy-mon
+    restart: unless-stopped
+    # Liitu samasse võrku kui caddy-proxy, et DNS-nimi "caddy-proxy" laheneks
+    networks:
+      - caddy_default
+    ports:
+      - "8080:8080"
+    # Caddy access-log (valikuline, tuleviku logianalüütika jaoks)
+    volumes:
+      - /home/andres.kaaber/stacks/caddy/logs:/caddy-logs:ro
+
+networks:
+  caddy_default:
+    external: true
