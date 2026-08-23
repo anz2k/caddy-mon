@@ -17,9 +17,9 @@ Use these to verify your work before declaring a task finished:
 ## 3. Coding Style & Preferences
 - **Language:** All code, comments, docstrings, UI strings, and docs MUST be English. Never write Estonian (or any other non-English) text in the repo.
 - **Caddy data source:** Always read from the Caddy admin API (`http://caddy-proxy:2019`), never parse the Caddyfile directly. Use:
-  - `/config/apps/http/servers/srv0/routes` for routes + upstreams
+  - `/config/apps/http/servers` for ALL servers (srv0, srv1, ...), then `.routes` from each — do NOT hardcode `srv0` (your Caddy may have multiple servers)
   - `/metrics` for `caddy_reverse_proxy_upstreams_healthy{upstream="IP:port"}` (0/1)
-- **Health logic:** Caddy `healthy` metric is authoritative. A failed self-probe is a false negative (e.g. Immich does not answer plain HTTP). If Caddy reports no health (`None`), the probe becomes the only signal.
+- **Health logic:** Combine Caddy `healthy` metric with the self-probe. A site is dead if Caddy reports `healthy=0`, OR Caddy reports `healthy=1` but the probe gets **connection refused** (stale Caddy signal), OR Caddy reports `None` and the probe fails. A probe timeout (not connection refused) with `healthy=1` is still alive. If Caddy reports `None`, the probe is the only signal.
 - **No hardcoded infra:** Never put real LAN IPs (e.g. `192.168.x.x`) or internal hostnames in the repo. Use placeholders like `<upstream-ip>` or `<deployment-dir>` in docs.
 - **Example pattern (parsing healthy metric):**
 ```python
