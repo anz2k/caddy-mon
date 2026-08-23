@@ -518,7 +518,12 @@ def _ingest_logs():
     try:
         with open(_LOG_PATH, "r", errors="replace") as f:
             f.seek(_LOG_OFFSET["pos"])
-            for line in f:
+            # Read line-by-line but track position via seek+readline to avoid
+            # the "telling position disabled by next()" OSError from f.tell().
+            while True:
+                line = f.readline()
+                if not line:
+                    break
                 _LOG_OFFSET["pos"] = f.tell()
                 line = line.strip()
                 if not line:
