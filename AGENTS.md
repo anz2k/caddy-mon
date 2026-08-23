@@ -20,7 +20,8 @@ language (e.g. Estonian, Polish, etc.) anywhere in the repo.
 
 ## How to contribute
 
-1. Edit files locally in `~/stacks/caddy-mon/`.
+1. Edit files locally in `~/GIT/caddy-mon/` (the dev checkout; the server
+   deployment copy lives at `~/stacks/caddy-mon/` on docker02).
 2. Commit and push to `main` on GitHub (`anz2k/caddy-mon`).
 3. After pushing, the server (docker02, `<server-ip>`) is updated automatically
    by the agent with:
@@ -29,32 +30,7 @@ language (e.g. Estonian, Polish, etc.) anywhere in the repo.
    ```
    You do NOT need to ask for permission to rebuild after a push.
 
-## Local dev / test
-
-```bash
-cd ~/stacks/caddy-mon
-docker compose up -d --build
-```
-# then open the dashboard in a browser on the LAN (port 8080 on docker02)
-
-- Dashboard: `GET /` (HTML, auto-refreshes every 12s)
-- JSON API: `GET /api/state` — returns `{last_update, sites[], errors[]}`
-
-Each site in `/api/state`:
-```json
-{
-  "primary_host": "example.ee",
-  "hosts": ["example.ee", "www.example.ee"],
-  "upstreams": [
-    {"upstream": "<upstream-ip>:8080", "caddy_healthy": true, "probe_ok": true,
-     "status": 200, "ms": 12.3, "error": null}
-  ],
-  "alive": true,
-  "latency_ms": 12.3
-}
-```
-
-## Health decision logic
+## API reference
 
 - **Caddy `caddy_reverse_proxy_upstreams_healthy` metric is authoritative.**
   If Caddy reports `healthy=1`, the site is alive. A failed self-probe is
