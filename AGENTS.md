@@ -34,8 +34,8 @@ language (e.g. Estonian, Polish, etc.) anywhere in the repo.
 ```bash
 cd ~/stacks/caddy-mon
 docker compose up -d --build
-# open http://<server-ip>:8080
 ```
+# then open the dashboard in a browser on the LAN (port 8080 on docker02)
 
 - Dashboard: `GET /` (HTML, auto-refreshes every 12s)
 - JSON API: `GET /api/state` — returns `{last_update, sites[], errors[]}`
