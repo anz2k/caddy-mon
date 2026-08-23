@@ -342,7 +342,7 @@ def dashboard(request: Request):
 </style></head>
 <body>
   <h1>Caddy Mon</h1>
-  <div class="sub">Caddy reverse-proxy live status · {total} sites · {alive} alive · updated {datetime.now(TZ).strftime('%H:%M:%S')} · <a href="/topology" style="color:#60a5fa">topology</a></div>
+  <div class="sub">Caddy reverse-proxy live status · {total} sites · {alive} alive · updated {datetime.now(TZ).strftime('%H:%M:%S')} · <a href="/topology" style="color:#60a5fa">topology</a> · <a href="/logs" style="color:#60a5fa">logs</a></div>
   {err_html}
   <div class="groups">{groups_html}</div>
   <script>
@@ -487,6 +487,157 @@ def topology(request: Request):
   <script>
     setTimeout(() => location.reload(), 12000);
   </script>
+</body></html>"""
+    return HTMLResponse(html)
+
+
+# ---------------------------------------------------------------------------
+# Log analytics
+# ---------------------------------------------------------------------------
+_LOG_PATH = "/caddy-logs/access.log"
+_LOG_OFFSET = {"pos": 0, "inode": None}
+_LOG_CACHE = []  # list of parsed recent entries ({"ts","host","uri","status","duration"})
+
+
+def _ingest_logs():
+    """Read new lines from the Caddy access log, keep last ~5000 entries.
+
+    Tracks file position + inode so a log rotation (new file) restarts from 0.
+    Filters out caddy-mon's own admin-API polling noise (logger=admin.api).
+    """
+    global _LOG_OFFSET, _LOG_CACHE
+    try:
+        st = os.stat(_LOG_PATH)
+    except OSError:
+        return
+    # Rotation: inode changed -> reset offset
+    if _LOG_OFFSET["inode"] != st.st_ino:
+        _LOG_OFFSET = {"pos": 0, "inode": st.st_ino}
+    if st.st_size < _LOG_OFFSET["pos"]:
+        _LOG_OFFSET["pos"] = 0
+    try:
+        with open(_LOG_PATH, "r", errors="replace") as f:
+            f.seek(_LOG_OFFSET["pos"])
+            for line in f:
+                _LOG_OFFSET["pos"] = f.tell()
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                if rec.get("logger") == "admin.api":
+                    continue
+                req = rec.get("request", {})
+                _LOG_CACHE.append({
+                    "ts": rec.get("ts"),
+                    "host": req.get("host"),
+                    "uri": req.get("uri"),
+                    "status": rec.get("status"),
+                    "duration": rec.get("duration"),
+                })
+    except OSError:
+        return
+    # Cap memory
+    if len(_LOG_CACHE) > 5000:
+        _LOG_CACHE = _LOG_CACHE[-5000:]
+
+
+def _log_stats(window=3600):
+    """Aggregate recent log entries over the last `window` seconds."""
+    _ingest_logs()
+    now = time.time()
+    cutoff = now - window
+    per_host = {}
+    recent_5xx = []
+    for e in _LOG_CACHE:
+        ts = e["ts"]
+        if ts is None or ts < cutoff:
+            continue
+        h = e["host"]
+        if not h:
+            continue
+        d = per_host.setdefault(h, {"requests": 0, "errors_5xx": 0, "durations": []})
+        d["requests"] += 1
+        st = e["status"]
+        if isinstance(st, int) and st >= 500:
+            d["errors_5xx"] += 1
+            if len(recent_5xx) < 50:
+                recent_5xx.append(e)
+        if isinstance(e["duration"], (int, float)):
+            d["durations"].append(e["duration"])
+    rows = []
+    for h, d in per_host.items():
+        avg_ms = (sum(d["durations"]) / len(d["durations"]) * 1000) if d["durations"] else 0.0
+        err_pct = (d["errors_5xx"] / d["requests"] * 100) if d["requests"] else 0.0
+        rows.append({
+            "host": h,
+            "requests": d["requests"],
+            "errors_5xx": d["errors_5xx"],
+            "error_pct": round(err_pct, 1),
+            "avg_ms": round(avg_ms, 1),
+        })
+    rows.sort(key=lambda r: (-r["error_pct"], -r["requests"]))
+    return {"window_seconds": window, "rows": rows, "recent_5xx": recent_5xx}
+
+
+@app.get("/api/logs")
+def api_logs(window: int = 3600):
+    return _log_stats(window=window)
+
+
+@app.get("/logs", response_class=HTMLResponse)
+def logs_page(request: Request, window: int = 3600):
+    data = _log_stats(window=window)
+    rows = data["rows"]
+    table_rows = ""
+    for r in rows:
+        err_color = "#f87171" if r["error_pct"] > 0 else "#9ca3af"
+        table_rows += f"""<tr>
+          <td>{r['host']}</td>
+          <td>{r['requests']}</td>
+          <td style="color:{err_color}">{r['errors_5xx']}</td>
+          <td style="color:{err_color}">{r['error_pct']}%</td>
+          <td>{r['avg_ms']}ms</td>
+        </tr>"""
+    recent = data["recent_5xx"]
+    recent_html = ""
+    for e in recent[:20]:
+        ts = datetime.fromtimestamp(e["ts"], TZ).strftime("%H:%M:%S") if e["ts"] else "?"
+        uri = (e["uri"] or "")[:60]
+        recent_html += f"""<tr><td>{ts}</td><td>{e['host']}</td><td>{e['status']}</td><td style="color:#9ca3af">{uri}</td></tr>"""
+    if not recent_html:
+        recent_html = '<tr><td colspan="4" style="color:#9ca3af">No 5xx errors in window</td></tr>'
+    html = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caddy Mon — Log Analytics</title>
+<style>
+  :root {{ color-scheme: dark; }}
+  body {{ font-family: system-ui, sans-serif; background:#0f1115; color:#e5e7eb; margin:0; padding:24px; }}
+  h1 {{ font-size:20px; margin:0 0 4px; }}
+  .sub {{ color:#9ca3af; font-size:13px; margin-bottom:20px; }}
+  a {{ color:#60a5fa; }}
+  table {{ border-collapse:collapse; width:100%; max-width:800px; margin-bottom:28px; }}
+  th,td {{ text-align:left; padding:8px 10px; border-bottom:1px solid #2a2d35; font-size:13px; }}
+  th {{ color:#9ca3af; font-weight:600; }}
+  h2 {{ font-size:15px; color:#9ca3af; margin:0 0 12px; }}
+</style></head>
+<body>
+  <h1>Caddy Mon — Log Analytics</h1>
+  <div class="sub">last {window//60} min · <a href="/">dashboard</a> · <a href="/topology">topology</a></div>
+  <h2>Per-host request summary</h2>
+  <table>
+    <tr><th>Host</th><th>Requests</th><th>5xx</th><th>Error %</th><th>Avg</th></tr>
+    {table_rows}
+  </table>
+  <h2>Recent 5xx errors</h2>
+  <table>
+    <tr><th>Time</th><th>Host</th><th>Status</th><th>URI</th></tr>
+    {recent_html}
+  </table>
+  <script>setTimeout(() => location.reload(), 30000);</script>
 </body></html>"""
     return HTMLResponse(html)
 
