@@ -6,6 +6,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir fastapi==0.115.0 uvicorn[standard]==0.30.6 httpx==0.27.2
 
 COPY app.py /app/app.py
+COPY caddy_mon /app/caddy_mon
 
 # Poll the Caddy admin API every 10 seconds; no persistent storage needed
 EXPOSE 8080
