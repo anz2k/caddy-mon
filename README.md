@@ -9,6 +9,8 @@ No Grafana, no Prometheus, no external TSDB — just Caddy, which you already ru
 ## Features
 
 - **Live health dashboard** — live alive/dead + latency per proxied site with zero-flicker SSE updates
+- **Dynamic Route CRUD & Deployment** — create new reverse-proxy routes (`[+ Add Site]`), delete routes, and manage upstreams on the fly
+- **Audit Trail & Rollback Engine** — visual change log at `/audit` (`POST /api/routes`, `DELETE /api/routes/{host}`) with automatic pre-modification snapshots and one-click rollback
 - **Live Search & Status Filtering** — instant search (`/` shortcut), quick status filter pills (`All`, `Alive`, `Down`, `Maint`, `>100ms`), and multi-attribute sorting
 - **Site Deep-Dive Inspector Modal** — click any card to inspect 24h/7d latency stats (min/avg/max), host-specific access logs, and incident timelines
 - **Automated ACME & Custom TLS Discovery** — monitors Let's Encrypt / ZeroSSL automatic certificates alongside manual certs with expiration countdowns

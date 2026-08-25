@@ -92,6 +92,34 @@ def init_db():
                     started_at REAL NOT NULL
                 );
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    user TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    host TEXT,
+                    details TEXT,
+                    diff_json TEXT
+                );
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_audit_ts
+                ON audit_log(ts);
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS config_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    user TEXT NOT NULL,
+                    description TEXT,
+                    config_json TEXT NOT NULL
+                );
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_snapshots_cfg_ts
+                ON config_snapshots(ts);
+            """)
             conn.commit()
     except Exception as e:
         print(f"[caddy-mon] Warning: init_db encountered error: {e}")
@@ -407,3 +435,128 @@ def get_host_extended_history(host: str, now: Optional[float] = None) -> Dict[st
         "avg_latency_ms": avg_latency,
         "sample_count": len(latencies),
     }
+
+
+def record_audit(
+    user: str,
+    action: str,
+    host: str = "",
+    details: str = "",
+    diff_json: Optional[str] = None,
+    ts: Optional[float] = None,
+) -> int:
+    """Record an administrative audit log event (e.g. 'CREATE_ROUTE', 'DELETE_ROUTE')."""
+    now = ts or time.time()
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO audit_log (ts, user, action, host, details, diff_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (now, user, action, host, details, diff_json),
+            )
+            conn.commit()
+            return cur.lastrowid or 0
+    except sqlite3.Error:
+        return 0
+
+
+def get_audit_logs(limit: int = 50) -> List[Dict[str, Any]]:
+    """Fetch recent administrative audit log events."""
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT id, ts, user, action, host, details, diff_json
+                FROM audit_log
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            return [
+                {
+                    "id": r["id"],
+                    "ts": r["ts"],
+                    "user": r["user"],
+                    "action": r["action"],
+                    "host": r["host"],
+                    "details": r["details"],
+                    "diff_json": r["diff_json"],
+                }
+                for r in cur.fetchall()
+            ]
+    except sqlite3.Error:
+        return []
+
+
+def save_config_snapshot(
+    user: str,
+    description: str,
+    config_json: str,
+    ts: Optional[float] = None,
+) -> int:
+    """Save a snapshot of Caddy JSON configuration before making changes."""
+    now = ts or time.time()
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO config_snapshots (ts, user, description, config_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (now, user, description, config_json),
+            )
+            conn.commit()
+            return cur.lastrowid or 0
+    except sqlite3.Error:
+        return 0
+
+
+def get_config_snapshots(limit: int = 20) -> List[Dict[str, Any]]:
+    """List recent Caddy configuration snapshots."""
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT id, ts, user, description
+                FROM config_snapshots
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            return [
+                {
+                    "id": r["id"],
+                    "ts": r["ts"],
+                    "user": r["user"],
+                    "description": r["description"],
+                }
+                for r in cur.fetchall()
+            ]
+    except sqlite3.Error:
+        return []
+
+
+def get_config_snapshot(snapshot_id: int) -> Optional[Dict[str, Any]]:
+    """Retrieve full configuration JSON of a specific snapshot."""
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                "SELECT id, ts, user, description, config_json FROM config_snapshots WHERE id = ?",
+                (snapshot_id,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "id": row["id"],
+                    "ts": row["ts"],
+                    "user": row["user"],
+                    "description": row["description"],
+                    "config_json": row["config_json"],
+                }
+    except sqlite3.Error:
+        pass
+    return None

@@ -1,4 +1,4 @@
-"""Dashboard (home page) and /api/state with modern Tailwind CSS UI, Search, Filters, and Site Inspector Modal."""
+"""Dashboard (home page) and /api/state with modern Tailwind CSS UI, Search, Filters, Site Inspector Modal, and Dynamic Route CRUD."""
 
 from html import escape
 from datetime import datetime
@@ -53,7 +53,7 @@ def _render_sparkline_svg(points: List[float], state_type: str = "alive") -> str
 
 
 def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = None) -> str:
-    """Render one modern Tailwind site card with data attributes for search and filtering."""
+    """Render one modern Tailwind site card with data attributes for search, filtering, and CRUD."""
     primary = s.get("primary_host", "")
     is_maint = bool(maintenance_map and primary in maintenance_map)
     latency_val = s.get("latency_ms", 0.0)
@@ -186,9 +186,14 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
             <h3 class="text-base font-mono font-bold text-on-surface break-all cursor-pointer hover:text-primary transition-colors" 
                 onclick="openSiteDetails('{escape(primary)}')" 
                 title="Click for full history & logs">{escape(primary)}</h3>
-            <button onclick="openSiteDetails('{escape(primary)}')" class="text-outline hover:text-primary transition-colors cursor-pointer p-0.5" title="View details & logs">
-              <span class="material-symbols-outlined text-[18px]">info</span>
-            </button>
+            <div class="flex items-center gap-1">
+              <button onclick="openSiteDetails('{escape(primary)}')" class="text-outline hover:text-primary transition-colors cursor-pointer p-0.5" title="View details & logs">
+                <span class="material-symbols-outlined text-[18px]">info</span>
+              </button>
+              <button onclick="confirmDeleteRoute('{escape(primary)}')" class="text-outline hover:text-status-down transition-colors cursor-pointer p-0.5" title="Delete Caddy route">
+                <span class="material-symbols-outlined text-[18px]">delete</span>
+              </button>
+            </div>
           </div>
           {aliases_html}
         </div>
@@ -227,7 +232,7 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
 
 
 async def dashboard(request: Request):
-    """Render main modern dashboard with Search, Filters, and Site Inspector Modal."""
+    """Render main modern dashboard with Search, Filters, Site Inspector Modal, and Add Site capability."""
     await refresh()
     sites = _state.get("sites", [])
     errors = _state.get("errors", [])
@@ -340,7 +345,10 @@ async def dashboard(request: Request):
   <header class="bg-background docked full-width top-0 flex flex-col gap-2 w-full pt-6 px-gutter max-w-container-max mx-auto border-b-0">
     <div class="flex justify-between items-center w-full">
       <h1 class="text-2xl font-bold text-on-surface tracking-tight font-sans">Caddy Mon</h1>
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-3">
+        <button onclick="openAddSiteModal()" class="bg-primary hover:bg-sky-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow-lg transition-colors cursor-pointer" title="Add new Caddy reverse-proxy route">
+          <span class="material-symbols-outlined text-base">add</span> Add Site
+        </button>
         <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-status-alive/10 border border-status-alive/20">
           <span class="w-2 h-2 rounded-full bg-status-alive animate-pulse" id="live-dot"></span>
           <span class="text-status-alive text-[11px] font-bold uppercase tracking-wider font-mono" id="conn-text">Live SSE</span>
@@ -372,6 +380,7 @@ async def dashboard(request: Request):
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/security">Security</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/tls">TLS</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/caddy/config">Caddy Config</a>
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/audit">Audit Trail</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/status">Status Page</a>
     </nav>
   </header>
@@ -485,7 +494,74 @@ async def dashboard(request: Request):
       <!-- Modal Footer -->
       <div class="p-4 border-t border-white/10 flex justify-between items-center bg-[#0f172a]">
         <div id="modal-export-link"></div>
-        <button onclick="closeSiteDetails()" class="bg-[#1e293b] hover:bg-slate-700 text-on-surface px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer">Close</button>
+        <div class="flex items-center gap-2">
+          <button id="modal-delete-btn" class="bg-status-down/20 hover:bg-status-down text-status-down hover:text-white border border-status-down/30 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
+            Delete Route
+          </button>
+          <button onclick="closeSiteDetails()" class="bg-[#1e293b] hover:bg-slate-700 text-on-surface px-4 py-1.5 rounded-lg text-xs font-semibold cursor-pointer">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add New Route Modal -->
+  <div id="add-modal" class="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-[#131b2e] border border-white/15 rounded-xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col">
+      <div class="p-4 border-b border-white/10 flex justify-between items-center bg-[#0f172a]">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-xl">add_circle</span>
+          <h3 class="text-base font-mono font-bold text-on-surface">Add Reverse-Proxy Route</h3>
+        </div>
+        <button onclick="closeAddSiteModal()" class="text-outline hover:text-on-surface p-1">✕</button>
+      </div>
+      <form id="add-route-form" onsubmit="submitAddRoute(event)" class="p-5 flex flex-col gap-4 text-xs font-sans">
+        <div class="flex flex-col gap-1">
+          <label class="font-mono text-outline font-semibold">Primary Domain (FQDN) *</label>
+          <input type="text" id="add-domain" required placeholder="e.g. app.lope.ee" 
+                 class="bg-[#1e293b] border border-white/10 rounded-lg px-3 py-2 text-on-surface font-mono text-xs focus:border-primary outline-none" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="font-mono text-outline font-semibold">Aliases (comma-separated, optional)</label>
+          <input type="text" id="add-aliases" placeholder="e.g. www.app.lope.ee, test.lope.ee" 
+                 class="bg-[#1e293b] border border-white/10 rounded-lg px-3 py-2 text-on-surface font-mono text-xs focus:border-primary outline-none" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="font-mono text-outline font-semibold">Upstream Endpoint (IP:port or host:port) *</label>
+          <input type="text" id="add-upstream" required placeholder="e.g. 192.168.1.50:8080 or backend:3000" 
+                 class="bg-[#1e293b] border border-white/10 rounded-lg px-3 py-2 text-on-surface font-mono text-xs focus:border-primary outline-none" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="font-mono text-outline font-semibold">Path Prefix (optional)</label>
+          <input type="text" id="add-path" placeholder="e.g. /api" 
+                 class="bg-[#1e293b] border border-white/10 rounded-lg px-3 py-2 text-on-surface font-mono text-xs focus:border-primary outline-none" />
+        </div>
+        <div id="add-form-error" class="hidden text-status-down font-mono text-[11px] bg-status-down/10 p-2.5 rounded border border-status-down/30"></div>
+        <div class="flex justify-end gap-2 pt-2 border-t border-white/10 mt-2">
+          <button type="button" onclick="closeAddSiteModal()" class="bg-[#1e293b] hover:bg-slate-700 text-on-surface px-4 py-2 rounded-lg font-semibold">Cancel</button>
+          <button type="submit" id="add-submit-btn" class="bg-primary hover:bg-sky-400 text-slate-950 font-bold px-4 py-2 rounded-lg flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm">cloud_upload</span> Deploy Route
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="delete-modal" class="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-[#131b2e] border border-status-down/40 rounded-xl w-full max-w-md overflow-hidden shadow-2xl p-5 flex flex-col gap-4">
+      <div class="flex items-center gap-3 text-status-down">
+        <span class="material-symbols-outlined text-3xl">warning</span>
+        <h3 class="text-base font-mono font-bold">Delete Route Confirmation</h3>
+      </div>
+      <p class="text-xs text-on-surface-variant font-sans leading-relaxed">
+        Are you sure you want to remove the Caddy reverse-proxy route for <strong id="delete-host-name" class="font-mono text-on-surface"></strong>?
+        An automatic configuration snapshot will be created before deletion.
+      </p>
+      <div class="flex justify-end gap-2 pt-2 border-t border-white/10">
+        <button onclick="closeDeleteModal()" class="bg-[#1e293b] hover:bg-slate-700 text-on-surface px-4 py-1.5 rounded-lg text-xs font-semibold">Cancel</button>
+        <button id="delete-confirm-btn" class="bg-status-down hover:bg-rose-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">delete_forever</span> Confirm Delete
+        </button>
       </div>
     </div>
   </div>
@@ -497,6 +573,7 @@ async def dashboard(request: Request):
       <div class="flex gap-6">
         <a class="hover:text-primary transition-colors" href="/status">Public Status</a>
         <a class="hover:text-primary transition-colors" href="/status/feed.xml">RSS Feed</a>
+        <a class="hover:text-primary transition-colors" href="/audit">Audit Trail</a>
         <a class="hover:text-primary transition-colors" href="/api/export">JSON Export</a>
         <a class="hover:text-primary transition-colors" href="/caddy/config">Config</a>
       </div>
@@ -513,6 +590,7 @@ async def dashboard(request: Request):
     let currentFilter = 'all';
     let currentSearch = '';
     let currentSort = 'group';
+    let activeDeleteHost = '';
 
     function showToast(msg, duration = 3500) {{
       const t = document.getElementById('toast');
@@ -580,7 +658,6 @@ async def dashboard(request: Request):
         if (visible) visibleCount++;
       }});
 
-      // Show/hide domain groups if all cards within are hidden
       document.querySelectorAll('.domain-group').forEach(sec => {{
         const secCards = sec.querySelectorAll('.site-card');
         const anyVisible = Array.from(secCards).some(c => c.style.display !== 'none');
@@ -590,7 +667,6 @@ async def dashboard(request: Request):
       document.getElementById('no-search-results').classList.toggle('hidden', visibleCount > 0);
     }}
 
-    // Search input listener
     const searchInput = document.getElementById('search-input');
     const clearBtn = document.getElementById('clear-search');
     searchInput.addEventListener('input', (e) => {{
@@ -606,15 +682,13 @@ async def dashboard(request: Request):
       applyFiltersAndSort();
     }});
 
-    // Global keyboard shortcut '/' to focus search
     window.addEventListener('keydown', (e) => {{
-      if (e.key === '/' && document.activeElement !== searchInput) {{
+      if (e.key === '/' && document.activeElement !== searchInput && document.activeElement.tagName !== 'INPUT') {{
         e.preventDefault();
         searchInput.focus();
       }}
     }});
 
-    // Filter pill buttons
     document.querySelectorAll('.filter-pill').forEach(btn => {{
       btn.addEventListener('click', () => {{
         document.querySelectorAll('.filter-pill').forEach(b => {{
@@ -626,16 +700,10 @@ async def dashboard(request: Request):
       }});
     }});
 
-    // Sorting selector
     document.getElementById('sort-select').addEventListener('change', (e) => {{
       const sortVal = e.target.value;
-      const container = document.getElementById('groups-container');
       const grids = document.querySelectorAll('.cards-grid');
-
-      if (sortVal === 'group') {{
-        location.reload();
-        return;
-      }}
+      if (sortVal === 'group') {{ location.reload(); return; }}
 
       grids.forEach(grid => {{
         const cards = Array.from(grid.querySelectorAll('.site-card'));
@@ -650,12 +718,99 @@ async def dashboard(request: Request):
       }});
     }});
 
+    /* Add Route Modal Logic */
+    function openAddSiteModal() {{
+      document.getElementById('add-form-error').classList.add('hidden');
+      document.getElementById('add-route-form').reset();
+      document.getElementById('add-modal').classList.remove('hidden');
+    }}
+
+    function closeAddSiteModal() {{
+      document.getElementById('add-modal').classList.add('hidden');
+    }}
+
+    async function submitAddRoute(e) {{
+      e.preventDefault();
+      const domain = document.getElementById('add-domain').value.trim();
+      const aliasesRaw = document.getElementById('add-aliases').value.trim();
+      const upstream = document.getElementById('add-upstream').value.trim();
+      const pathPrefix = document.getElementById('add-path').value.trim();
+      const errBox = document.getElementById('add-form-error');
+      const submitBtn = document.getElementById('add-submit-btn');
+
+      const aliases = aliasesRaw ? aliasesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const upstreams = upstream ? [upstream] : [];
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span> Deploying...';
+      errBox.classList.add('hidden');
+
+      try {{
+        const r = await fetch('/api/routes', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+            primary_host: domain,
+            aliases: aliases,
+            upstreams: upstreams,
+            path_prefix: pathPrefix
+          }})
+        }});
+        const res = await r.json();
+        if (res.ok) {{
+          showToast('<span class="material-symbols-outlined text-status-alive text-base">check_circle</span> Route ' + escapeHtml(domain) + ' created successfully!');
+          closeAddSiteModal();
+          setTimeout(() => location.reload(), 1000);
+        }} else {{
+          errBox.textContent = res.error || 'Failed to deploy route';
+          errBox.classList.remove('hidden');
+        }}
+      }} catch (err) {{
+        errBox.textContent = 'Error: ' + err;
+        errBox.classList.remove('hidden');
+      }} finally {{
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span class="material-symbols-outlined text-sm">cloud_upload</span> Deploy Route';
+      }}
+    }}
+
+    /* Delete Route Modal Logic */
+    function confirmDeleteRoute(host) {{
+      activeDeleteHost = host;
+      document.getElementById('delete-host-name').textContent = host;
+      document.getElementById('delete-modal').classList.remove('hidden');
+    }}
+
+    function closeDeleteModal() {{
+      document.getElementById('delete-modal').classList.add('hidden');
+    }}
+
+    document.getElementById('delete-confirm-btn').addEventListener('click', async () => {{
+      if (!activeDeleteHost) return;
+      const host = activeDeleteHost;
+      closeDeleteModal();
+      showToast('<span class="material-symbols-outlined text-status-down text-base">delete</span> Deleting ' + escapeHtml(host) + '...');
+      try {{
+        const r = await fetch('/api/routes/' + encodeURIComponent(host), {{ method: 'DELETE' }});
+        const res = await r.json();
+        if (res.ok) {{
+          showToast('<span class="material-symbols-outlined text-status-alive text-base">check_circle</span> Route deleted successfully!');
+          setTimeout(() => location.reload(), 1000);
+        }} else {{
+          showToast('<span class="material-symbols-outlined text-status-down text-base">error</span> ' + (res.error || 'Delete failed'));
+        }}
+      }} catch (err) {{
+        showToast('Delete error: ' + err);
+      }}
+    }});
+
     /* Site Deep-Dive Modal Logic */
     async function openSiteDetails(host) {{
       const modal = document.getElementById('site-modal');
       modal.classList.remove('hidden');
       document.getElementById('modal-host').textContent = host;
       document.getElementById('modal-status-line').innerHTML = '<span class="text-outline">Loading detailed history and logs...</span>';
+      document.getElementById('modal-delete-btn').onclick = () => {{ closeSiteDetails(); confirmDeleteRoute(host); }};
 
       try {{
         const r = await fetch('/api/site/' + encodeURIComponent(host) + '/details');

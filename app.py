@@ -1,7 +1,7 @@
 """caddy-mon — FastAPI entry point.
 
 Wires Caddy/Log sources, SQLite persistent history, SSE real-time streaming,
-auth, public status page, security analytics, Caddy control plane, and deep-dive APIs.
+auth, public status page, security analytics, Caddy control plane, route CRUD, and audit logging.
 """
 
 import asyncio
@@ -22,6 +22,8 @@ from caddy_mon.db import (
     get_all_maintenance,
     get_host_extended_history,
     get_host_incidents,
+    get_audit_logs,
+    get_config_snapshots,
 )
 from caddy_mon.log_source import get_host_recent_logs
 from caddy_mon.caddy_source import refresh, background_poll_loop, _state
@@ -31,6 +33,8 @@ from caddy_mon.status_page import status_page, api_status, status_feed_xml
 from caddy_mon.diagnostics import probe_host_detailed
 from caddy_mon.security_page import security_page, security_analytics
 from caddy_mon.caddy_control import caddy_config_page, get_caddy_raw_config, reload_caddy
+from caddy_mon.caddy_crud import create_caddy_route, delete_caddy_route, rollback_caddy_config
+from caddy_mon.audit_page import audit_page
 from caddy_mon.topology import topology, api_topology
 from caddy_mon.logs_page import logs_page, api_logs
 from caddy_mon.tls_page import tls_page, api_tls
@@ -153,6 +157,72 @@ async def api_export_route():
         "recent_incidents": get_recent_incidents(limit=50),
     }
 
+
+# --------------------------------------------------------------------------
+# Route CRUD & Dynamic Management Endpoints
+# --------------------------------------------------------------------------
+
+@app.post("/api/routes", dependencies=[Depends(require_auth)])
+async def api_create_route(
+    payload: Dict[str, Any] = Body(...),
+):
+    """Create a new reverse-proxy route in Caddy with automated backup and audit."""
+    primary_host = payload.get("primary_host", "")
+    aliases = payload.get("aliases", [])
+    upstreams = payload.get("upstreams", [])
+    path_prefix = payload.get("path_prefix", "")
+    server = payload.get("server", "srv0")
+
+    return await create_caddy_route(
+        user=AUTH_USER or "admin",
+        primary_host=primary_host,
+        aliases=aliases,
+        upstreams=upstreams,
+        path_prefix=path_prefix,
+        server=server,
+    )
+
+
+@app.delete("/api/routes/{host}", dependencies=[Depends(require_auth)])
+async def api_delete_route(
+    host: str,
+    server: str = "srv0",
+):
+    """Delete a reverse-proxy route from Caddy with automated backup and audit."""
+    return await delete_caddy_route(
+        user=AUTH_USER or "admin",
+        host=host,
+        server=server,
+    )
+
+
+@app.get("/audit", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def audit_route(request: Request):
+    """Visual administrative audit trail and snapshot manager."""
+    return audit_page(request)
+
+
+@app.get("/api/audit", dependencies=[Depends(require_auth)])
+async def api_audit_route(limit: int = 50):
+    """Retrieve administrative audit trail events."""
+    return {
+        "audit_logs": get_audit_logs(limit=limit),
+        "snapshots": get_config_snapshots(limit=15),
+    }
+
+
+@app.post("/api/caddy/rollback/{snapshot_id}", dependencies=[Depends(require_auth)])
+async def api_caddy_rollback_route(snapshot_id: int):
+    """Rollback Caddy configuration to a previous saved snapshot."""
+    return await rollback_caddy_config(
+        user=AUTH_USER or "admin",
+        snapshot_id=snapshot_id,
+    )
+
+
+# --------------------------------------------------------------------------
+# Diagnostics, Maintenance & Security
+# --------------------------------------------------------------------------
 
 @app.get("/api/incidents", dependencies=[Depends(require_auth)])
 async def api_incidents_route(limit: int = 20):

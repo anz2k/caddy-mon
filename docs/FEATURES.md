@@ -161,12 +161,16 @@ multiple servers (e.g. for different listen ports or site groups).
 **What it adds:** Automated scanning of Caddy's ACME certificate storage (`/caddy-data` and `/data/caddy/certificates`) in addition to manual certs (`/caddy-certs`).
 **How it works:** Recursively parses X.509 certificate PEMs, matching domain SANs and calculating expiration dates for Let's Encrypt, ZeroSSL, and custom certificates.
 
-## Infrastructure Export
+## Dynamic Route CRUD & Deployment
 
-**What it adds:** Complete infrastructure state and history export endpoint (`GET /api/export`).
-**How it works:** Exports current routes, health state, active maintenance mapping, and recent incident events as a portable JSON payload for backups or automation.
+**What it adds:** An interactive "➕ Add Site" modal on the dashboard and route deletion controls (`POST /api/routes`, `DELETE /api/routes/{host}`).
+**How it works:** `caddy_mon.caddy_crud` validates FQDNs, aliases, ports, and upstreams, automatically takes a pre-modification configuration snapshot in SQLite, generates a native Caddy JSON route block, and injects it into Caddy's active memory with zero downtime. Caddy automatically provisions Let's Encrypt / ZeroSSL TLS certificates for any new domain.
+
+## Audit Trail & Snapshot Rollback
+
+**What it adds:** An administrative change log and backup manager at `/audit` (JSON at `/api/audit`, rollback via `POST /api/caddy/rollback/{id}`).
+**How it works:** Records every route creation, deletion, and rollback in SQLite (`audit_log` table) along with before/after payloads, operator usernames, and timestamps. If an error occurs, administrators can restore any previous configuration snapshot with one click.
 
 ## Planned / future (not yet implemented)
 
-- Interactive dynamic route editor & upstream draining via Caddy Admin API.
 - SSO / OIDC forward auth integration (Authelia / Authentik).

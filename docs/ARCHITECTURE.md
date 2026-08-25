@@ -52,6 +52,11 @@ ports or site groups). All are merged into the dashboard/topology view.
 | `GET /api/history/{host}` | JSON: `{host, uptime_24h, sparkline[]}` | Protected |
 | `GET /api/site/{host}/details` | JSON: comprehensive deep-dive details, extended history, recent logs, and incidents | Protected |
 | `GET /api/export` | JSON: full infrastructure status and incident export | Protected |
+| `POST /api/routes` | JSON: create new reverse-proxy route in Caddy with snapshot & audit | Protected |
+| `DELETE /api/routes/{host}` | JSON: delete reverse-proxy route in Caddy with snapshot & audit | Protected |
+| `GET /audit` | HTML audit trail and snapshot backup manager | Protected |
+| `GET /api/audit` | JSON: `{audit_logs[], snapshots[]}` | Protected |
+| `POST /api/caddy/rollback/{snapshot_id}` | JSON: rollback active Caddy config to previous snapshot | Protected |
 | `GET /api/incidents` | JSON: `{incidents[]}` (recent DOWN/RECOVERED events) | Protected |
 | `POST /api/probe/{host}` | Immediate on-demand diagnostic probe of all upstreams for a host | Protected |
 | `POST /api/maintenance/{host}` | Enable or disable maintenance mode for a host | Protected |
@@ -73,6 +78,8 @@ ports or site groups). All are merged into the dashboard/topology view.
 - Source: embedded SQLite database at `${DB_PATH}` (`/data/caddy_mon.db` by default, mounted via Docker volume with auto-fallback to `/tmp`).
 - `site_snapshots` records periodic health, alive status, and latency.
 - `site_maintenance` records planned maintenance windows and reasons.
+- `audit_log` records administrative changes (who, when, action, host, details, payload diff).
+- `config_snapshots` stores full Caddy JSON backups before every route creation, deletion, or rollback.
 - `get_site_uptime_24h(host)` calculates rolling 24h uptime percentage.
 - `get_site_sparkline(host)` computes 12-point or 24-point bucketed average latency for mini SVG rendering.
 - `get_host_extended_history(host)` computes min, max, avg latencies over rolling 24h and 7d periods.
@@ -96,7 +103,9 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 | `app.py` | FastAPI app: lifespan background worker, route registration, auth dependencies |
 | `caddy_mon/config.py` | Configuration settings (`CADDY_API`, `DB_PATH`, Telegram/Webhook tokens, `AUTH_*`, `STATUS_TITLE`, TZ) |
 | `caddy_mon/auth.py` | Optional HTTP Basic Auth security dependency using constant-time comparison |
-| `caddy_mon/db.py` | SQLite database layer: snapshots, 24h uptime, sparklines, maintenance, incidents, retention |
+| `caddy_mon/db.py` | SQLite database layer: snapshots, 24h uptime, sparklines, maintenance, incidents, audit logs, config snapshots |
+| `caddy_mon/caddy_crud.py` | Caddy reverse-proxy CRUD engine: input validation, route creator, route deleter, rollback executor |
+| `caddy_mon/audit_page.py` | Visual administrative audit trail and configuration snapshot rollback view (`/audit`) |
 | `caddy_mon/alerts.py` | Incident alerting: Telegram bot, Webhooks, transition detection, maintenance suppression |
 | `caddy_mon/sse.py` | Server-Sent Events broadcaster: live client queue management, keepalive |
 | `caddy_mon/status_page.py` | Public status page HTML, sanitized `/api/status`, and RSS 2.0 feed (`/status/feed.xml`) |
@@ -106,8 +115,8 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 | `caddy_mon/caddy_source.py` | Caddy admin API: routes, health metrics, async probes, background loop |
 | `caddy_mon/log_source.py` | Access-log ingestion: port stripping, client IP tracking, `get_host_recent_logs()`, `log_stats()` |
 | `caddy_mon/tls_source.py` | TLS cert parsing: automated ACME & manual cert discovery, expiry tracking |
-| `caddy_mon/dashboard.py` | Modern Tailwind dashboard with search, quick filters, sorting, and Site Inspector Modal |
+| `caddy_mon/dashboard.py` | Modern Tailwind dashboard with search, quick filters, sorting, Site Inspector, and CRUD modals |
 | `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
 | `caddy_mon/tls_page.py` | TLS expiry HTML page + `/api/tls` |
-| `tests/` | Comprehensive unit tests (54 unit tests across 13 test suites) + live Caddy integration tests |
+| `tests/` | Comprehensive unit tests (58 unit tests across 14 test suites) + live Caddy integration tests |
