@@ -11,9 +11,9 @@ services:
       - "8080:8080"
     # Caddy access log (for log analytics)
     volumes:
-      - /home/andres.kaaber/stacks/caddy/logs:/caddy-logs:ro
+      - ${CADDY_STACK_DIR}/logs:/caddy-logs:ro
       # Caddy TLS certificate files (for expiry monitoring)
-      - /home/andres.kaaber/stacks/caddy/certs:/caddy-certs:ro
+      - ${CADDY_STACK_DIR}/certs:/caddy-certs:ro
 
 networks:
   caddy_default:
