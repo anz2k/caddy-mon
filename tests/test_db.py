@@ -98,3 +98,11 @@ def test_prune_old_history():
 
     with db.get_connection() as conn:
         assert conn.execute("SELECT COUNT(*) AS c FROM site_snapshots").fetchone()["c"] == 1
+
+
+def test_fallback_when_path_unwritable():
+    unwritable_path = "/root/unwritable_dir_xyz/test.db"
+    conn = db.get_connection(path=unwritable_path)
+    assert conn is not None
+    conn.execute("CREATE TABLE IF NOT EXISTS test_fallback (id INT)")
+    conn.close()

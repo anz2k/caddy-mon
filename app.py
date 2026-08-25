@@ -26,7 +26,10 @@ from caddy_mon.tls_page import tls_page, api_tls
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start background 24/7 metrics poller on startup and cancel on shutdown."""
-    init_db()
+    try:
+        init_db()
+    except Exception as e:
+        print(f"[caddy-mon] Warning: init_db in lifespan: {e}")
     bg_task = asyncio.create_task(background_poll_loop())
     yield
     bg_task.cancel()

@@ -8,22 +8,31 @@ from typing import Optional, List, Dict, Any
 from .config import DB_PATH, HISTORY_RETENTION_DAYS
 
 
-def _ensure_dir():
-    """Ensure parent directory for SQLite database exists."""
-    parent = os.path.dirname(os.path.abspath(DB_PATH))
-    if parent and not os.path.exists(parent):
-        try:
+def get_connection(path: Optional[str] = None) -> sqlite3.Connection:
+    """Return a configured SQLite connection with automatic fallback if unwritable."""
+    target = path or DB_PATH
+
+    try:
+        parent = os.path.dirname(os.path.abspath(target))
+        if parent and not os.path.exists(parent):
             os.makedirs(parent, exist_ok=True)
-        except OSError:
-            pass
+        conn = sqlite3.connect(target, timeout=10.0)
+    except (sqlite3.OperationalError, PermissionError, OSError):
+        # Fallback to /tmp which is always writable
+        fallback = "/tmp/caddy_mon.db"
+        if target != fallback:
+            print(
+                f"[caddy-mon] Warning: Database path '{target}' is not writable "
+                f"(volume permission issue). Falling back to '{fallback}'."
+            )
+            try:
+                conn = sqlite3.connect(fallback, timeout=10.0)
+            except Exception:
+                conn = sqlite3.connect(":memory:", timeout=10.0)
+        else:
+            conn = sqlite3.connect(":memory:", timeout=10.0)
 
-
-def get_connection() -> sqlite3.Connection:
-    """Return a configured SQLite database connection."""
-    _ensure_dir()
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row
-    # WAL mode enables concurrent reads without locking writes
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
@@ -34,47 +43,50 @@ def get_connection() -> sqlite3.Connection:
 
 def init_db():
     """Create tables and indices if they do not exist."""
-    with get_connection() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS site_snapshots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts REAL NOT NULL,
-                host TEXT NOT NULL,
-                alive INTEGER NOT NULL,
-                latency_ms REAL NOT NULL,
-                status INTEGER
-            );
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_snapshots_host_ts
-            ON site_snapshots(host, ts);
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_snapshots_ts
-            ON site_snapshots(ts);
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS incident_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts REAL NOT NULL,
-                host TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                details TEXT,
-                resolved_ts REAL
-            );
-        """)
-        conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_incidents_ts
-            ON incident_events(ts);
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS alert_state (
-                host TEXT PRIMARY KEY,
-                last_state INTEGER NOT NULL,
-                last_alert_ts REAL NOT NULL
-            );
-        """)
-        conn.commit()
+    try:
+        with get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS site_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    host TEXT NOT NULL,
+                    alive INTEGER NOT NULL,
+                    latency_ms REAL NOT NULL,
+                    status INTEGER
+                );
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_snapshots_host_ts
+                ON site_snapshots(host, ts);
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_snapshots_ts
+                ON site_snapshots(ts);
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS incident_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    host TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    details TEXT,
+                    resolved_ts REAL
+                );
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_incidents_ts
+                ON incident_events(ts);
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS alert_state (
+                    host TEXT PRIMARY KEY,
+                    last_state INTEGER NOT NULL,
+                    last_alert_ts REAL NOT NULL
+                );
+            """)
+            conn.commit()
+    except Exception as e:
+        print(f"[caddy-mon] Warning: init_db encountered error: {e}")
 
 
 def record_snapshot(sites: List[Dict[str, Any]], now: Optional[float] = None):
