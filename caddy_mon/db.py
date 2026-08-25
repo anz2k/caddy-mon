@@ -84,6 +84,14 @@ def init_db():
                     last_alert_ts REAL NOT NULL
                 );
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS site_maintenance (
+                    host TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL,
+                    reason TEXT,
+                    started_at REAL NOT NULL
+                );
+            """)
             conn.commit()
     except Exception as e:
         print(f"[caddy-mon] Warning: init_db encountered error: {e}")
@@ -265,3 +273,72 @@ def prune_old_history(days: int = HISTORY_RETENTION_DAYS, now: Optional[float] =
             conn.commit()
     except sqlite3.Error:
         pass
+
+
+def set_maintenance(
+    host: str,
+    enabled: bool,
+    reason: str = "",
+    now: Optional[float] = None,
+):
+    """Set or toggle maintenance mode status for a host."""
+    ts = now or time.time()
+    try:
+        with get_connection() as conn:
+            if enabled:
+                conn.execute(
+                    """
+                    INSERT INTO site_maintenance (host, enabled, reason, started_at)
+                    VALUES (?, 1, ?, ?)
+                    ON CONFLICT(host) DO UPDATE SET
+                        enabled = 1,
+                        reason = excluded.reason,
+                        started_at = excluded.started_at
+                    """,
+                    (host, reason, ts),
+                )
+            else:
+                conn.execute("DELETE FROM site_maintenance WHERE host = ?", (host,))
+            conn.commit()
+    except sqlite3.Error:
+        pass
+
+
+def get_maintenance_status(host: str) -> Optional[Dict[str, Any]]:
+    """Return active maintenance info for a host, or None if not under maintenance."""
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                "SELECT host, enabled, reason, started_at FROM site_maintenance WHERE host = ? AND enabled = 1",
+                (host,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "host": row["host"],
+                    "enabled": bool(row["enabled"]),
+                    "reason": row["reason"],
+                    "started_at": row["started_at"],
+                }
+    except sqlite3.Error:
+        pass
+    return None
+
+
+def get_all_maintenance() -> Dict[str, Dict[str, Any]]:
+    """Return a dictionary of all hosts currently under active maintenance."""
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                "SELECT host, enabled, reason, started_at FROM site_maintenance WHERE enabled = 1"
+            )
+            return {
+                r["host"]: {
+                    "enabled": True,
+                    "reason": r["reason"],
+                    "started_at": r["started_at"],
+                }
+                for r in cur.fetchall()
+            }
+    except sqlite3.Error:
+        return {}

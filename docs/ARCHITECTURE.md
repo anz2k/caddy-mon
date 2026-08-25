@@ -41,33 +41,40 @@ ports or site groups). All are merged into the dashboard/topology view.
 
 ## Endpoints
 
-| Route | Purpose |
-|-------|---------|
-| `GET /` | HTML dashboard (cards with 24h uptime + sparklines, live SSE stream) |
-| `GET /api/state` | JSON: `{last_update, sites[], errors[]}` |
-| `GET /api/events` | Server-Sent Events (SSE) live streaming updates |
-| `GET /api/history/{host}` | JSON: `{host, uptime_24h, sparkline[]}` |
-| `GET /api/incidents` | JSON: `{incidents[]}` (recent DOWN/RECOVERED events) |
-| `GET /topology` | HTML SVG route map (host → path → Caddy proxy → upstream) |
-| `GET /api/topology` | JSON: `{nodes[], edges[]}` for the route map |
-| `GET /logs` | HTML log analytics (per-host 5xx/error%, recent 5xx) |
-| `GET /api/logs` | JSON: `{window_seconds, rows[], recent_5xx[]}` |
-| `GET /tls` | HTML TLS certificate expiry table |
-| `GET /api/tls` | JSON: `{entries[], warn_days}` |
+| Route | Purpose | Access |
+|-------|---------|--------|
+| `GET /status` | Public system status overview (sanitized services, incident timeline) | **Public** |
+| `GET /api/status` | Sanitized public status JSON API | **Public** |
+| `GET /` | HTML dashboard (cards with 24h uptime, sparklines, diagnostics, SSE) | Protected |
+| `GET /api/state` | JSON: `{last_update, sites[], errors[]}` | Protected |
+| `GET /api/events` | Server-Sent Events (SSE) live streaming updates | Protected |
+| `GET /api/history/{host}` | JSON: `{host, uptime_24h, sparkline[]}` | Protected |
+| `GET /api/incidents` | JSON: `{incidents[]}` (recent DOWN/RECOVERED events) | Protected |
+| `POST /api/probe/{host}` | Immediate on-demand diagnostic probe of all upstreams for a host | Protected |
+| `POST /api/maintenance/{host}` | Enable or disable maintenance mode for a host | Protected |
+| `GET /api/maintenance` | JSON: `{maintenance{}}` active maintenance mapping | Protected |
+| `GET /topology` | HTML SVG route map (host → path → Caddy proxy → upstream) | Protected |
+| `GET /api/topology` | JSON: `{nodes[], edges[]}` for the route map | Protected |
+| `GET /logs` | HTML log analytics (per-host 5xx/error%, recent 5xx) | Protected |
+| `GET /api/logs` | JSON: `{window_seconds, rows[], recent_5xx[]}` | Protected |
+| `GET /tls` | HTML TLS certificate expiry table | Protected |
+| `GET /api/tls` | JSON: `{entries[], warn_days}` | Protected |
 
 ## History & persistence internals
 
-- Source: embedded SQLite database at `${DB_PATH}` (`/data/caddy_mon.db` by default, mounted via Docker volume).
+- Source: embedded SQLite database at `${DB_PATH}` (`/data/caddy_mon.db` by default, mounted via Docker volume with auto-fallback to `/tmp`).
 - `site_snapshots` records periodic health, alive status, and latency.
+- `site_maintenance` records planned maintenance windows and reasons.
 - `get_site_uptime_24h(host)` calculates rolling 24h uptime percentage.
 - `get_site_sparkline(host)` computes 12-point bucketed average latency for mini SVG rendering.
 - `prune_old_history(days=7)` automatically purges snapshots older than retention limit.
 
-## Alerting internals
+## Alerting & maintenance internals
 
 - Telegram Bot and generic Webhooks (Discord/Slack) dispatch alerts on state changes:
   - `ALIVE -> DEAD`: Site down alert with failing upstream diagnostics.
   - `DEAD -> ALIVE`: Site recovered alert with downtime duration.
+- Maintenance Mode: Sites flagged under active maintenance suppress DOWN alerts to avoid false alarms.
 - Cooldown timer (`ALERT_COOLDOWN_MINUTES`) prevents notification storms during flapping.
 - All events are logged to `incident_events` table in SQLite.
 
@@ -77,11 +84,14 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 
 | Module | Responsibility |
 |--------|---------------|
-| `app.py` | FastAPI app: lifespan background worker, route registration |
-| `caddy_mon/config.py` | Configuration settings (`CADDY_API`, `DB_PATH`, Telegram/Webhook tokens, TZ) |
-| `caddy_mon/db.py` | SQLite database layer: snapshots, 24h uptime, sparklines, incidents, retention |
-| `caddy_mon/alerts.py` | Incident alerting: Telegram bot, Webhooks, transition detection, cooldown |
+| `app.py` | FastAPI app: lifespan background worker, route registration, auth dependencies |
+| `caddy_mon/config.py` | Configuration settings (`CADDY_API`, `DB_PATH`, Telegram/Webhook tokens, `AUTH_*`, TZ) |
+| `caddy_mon/auth.py` | Optional HTTP Basic Auth security dependency using constant-time comparison |
+| `caddy_mon/db.py` | SQLite database layer: snapshots, 24h uptime, sparklines, maintenance, incidents, retention |
+| `caddy_mon/alerts.py` | Incident alerting: Telegram bot, Webhooks, transition detection, maintenance suppression |
 | `caddy_mon/sse.py` | Server-Sent Events broadcaster: live client queue management, keepalive |
+| `caddy_mon/status_page.py` | Public status page HTML + sanitized `/api/status` endpoint |
+| `caddy_mon/diagnostics.py` | On-demand detailed upstream probing (`POST /api/probe/{host}`) |
 | `caddy_mon/caddy_source.py` | Caddy admin API: routes, health metrics, async probes, background loop |
 | `caddy_mon/log_source.py` | Access-log ingestion: `ingest_logs()`, `host_log_stats()`, `log_stats()` |
 | `caddy_mon/tls_source.py` | TLS cert parsing: `cert_status()`, expiry tracking |
@@ -89,4 +99,4 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 | `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
 | `caddy_mon/tls_page.py` | TLS expiry HTML page + `/api/tls` |
-| `tests/` | Unit tests (`test_caddy_source.py`, `test_tls_source.py`, `test_db.py`, `test_alerts.py`, `test_sse.py`) + live Caddy integration tests |
+| `tests/` | Comprehensive unit tests (43 unit tests) + live Caddy integration tests |

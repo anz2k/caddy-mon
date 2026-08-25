@@ -8,6 +8,10 @@ latency, and last check time — pulled straight from the Caddy admin API.
 ## Features
 
 - **Live health dashboard** — live alive/dead + latency per proxied site with zero-flicker SSE updates
+- **Public Status Page** — clean, sanitized public status overview (`/status` & `/api/status`) hiding internal LAN dials
+- **On-Demand Diagnostics** — instant "⚡ Test" probe button per card measuring status code, response headers, and latency
+- **Maintenance Mode** — toggle planned maintenance (`🛠️ Maint`) per site to suppress DOWN alerts during maintenance windows
+- **Optional Authentication** — HTTP Basic Auth (`AUTH_USER`/`AUTH_PASSWORD`) protecting admin routes while keeping `/status` public
 - **24h Uptime & Sparklines** — rolling 24h uptime % badge and mini SVG latency trendlines per card
 - **Incident alerting** — automatic Telegram and Webhook alerts when sites go DOWN or RECOVER
 - **Route topology** — SVG map of host → path → Caddy proxy → upstream (at `/topology`), supports path-based routing and multi-upstream
@@ -85,7 +89,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 
 # unit tests (no network needed)
-pytest tests/test_caddy_source.py tests/test_tls_source.py tests/test_db.py tests/test_alerts.py tests/test_sse.py -v
+pytest tests/test_*.py -v
 
 # live Caddy config tests (needs Caddy admin API reachable; auto-skip otherwise)
 pytest tests/test_caddy_config.py -v

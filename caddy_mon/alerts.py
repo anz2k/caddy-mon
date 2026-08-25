@@ -97,6 +97,14 @@ async def process_site_alerts(sites: List[Dict[str, Any]], now: Optional[float] 
 
         # Transition: ALIVE -> DEAD
         if prev_state == 1 and is_alive == 0:
+            from .db import get_maintenance_status
+            maint = get_maintenance_status(primary)
+            if maint and maint.get("enabled"):
+                # Site is under planned maintenance; suppress alert
+                _save_alert_state(primary, 0, ts)
+                record_incident(primary, "MAINTENANCE", f"Down during planned maintenance: {maint.get('reason')}", ts=ts)
+                continue
+
             if (ts - last_alert) >= cooldown_secs or last_alert == 0.0:
                 err_details = []
                 for u in s.get("upstreams", []):

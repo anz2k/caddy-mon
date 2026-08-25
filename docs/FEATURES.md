@@ -121,7 +121,27 @@ multiple servers (e.g. for different listen ports or site groups).
 
 **How it works:** `caddy_mon.alerts` monitors state transitions against the `alert_state` SQLite table. Cooldown throttling (`ALERT_COOLDOWN_MINUTES`) prevents alert floods during flapping, and incidents are archived in `incident_events`.
 
+## Public Status Page
+
+**What it adds:** A clean, public-facing status page at `/status` and sanitized JSON at `/api/status` for external users and customers.
+**How it works:** Displays overall system operational status ("All Systems Operational" / "Partial Outage" / "Major Outage"), 24h uptime %, and an incident timeline. Strictly sanitizes private network details: internal LAN IPs (`192.168.x.x`), internal port numbers, and `.lan` / `.local` domains are hidden.
+
+## On-Demand Diagnostics
+
+**What it adds:** Instant "⚡ Test" button on each site card triggering `POST /api/probe/{host}`.
+**How it works:** `caddy_mon.diagnostics` performs a real-time HTTP probe on the target host's upstreams, capturing connect time, latency, HTTP response code, and response headers (`Server`, `Content-Type`), returning diagnostic feedback immediately without waiting for the background polling cycle.
+
+## Maintenance Mode
+
+**What it adds:** An interactive "🛠️ Maint" toggle button on each card allowing administrators to place a site into planned maintenance mode.
+**How it works:** When a site is in maintenance mode, its status changes to amber `MAINTENANCE` on the dashboard and status page, and automated `DOWN` alerts to Telegram / Webhooks are suppressed to avoid false alarms.
+
+## Optional Authentication
+
+**What it adds:** Optional HTTP Basic Auth security layer configurable via `AUTH_USER` and `AUTH_PASSWORD` in `.env`.
+**How it works:** When enabled, protects administrative dashboard pages, APIs, and diagnostics routes (`/`, `/topology`, `/logs`, `/tls`, `/api/probe/*`) using constant-time string comparison (`secrets.compare_digest`), while leaving the public status page (`/status` & `/api/status`) accessible.
+
 ## Planned / future (not yet implemented)
 
-- Interactive control plane (Caddy route modification & maintenance mode toggling).
-- SSO/OIDC authentication & Public Status Page mode.
+- Interactive control plane (Caddy route modification & upstream draining via Caddy Admin API).
+- SSO / OIDC forward auth integration (Authelia / Authentik).

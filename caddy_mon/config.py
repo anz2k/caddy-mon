@@ -34,3 +34,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
 ALERT_COOLDOWN_MINUTES = int(os.environ.get("ALERT_COOLDOWN_MINUTES", "15"))
+
+# Optional dashboard authentication (Basic Auth).
+# If left empty, the dashboard is open without credentials.
+AUTH_USER = os.environ.get("AUTH_USER", "")
+AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
