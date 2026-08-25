@@ -24,11 +24,11 @@ def _render_card(s):
             bcolor = "#6b7280"
         show_probe_err = (not u["probe_ok"]) and (u["caddy_healthy"] is None)
         probe = f"{u['status']} / {u['ms']}ms" if u["probe_ok"] else (
-            f"probe failed: {u['error']}" if show_probe_err else "Caddy: alive")
+            f"probe failed: {escape(u['error'])}" if show_probe_err else "Caddy: alive")
         up_html += f"""
           <div class="up">
             <span class="badge" style="background:{bcolor}">{badge}</span>
-            <code>{u['upstream']}</code>
+            <code>{escape(u['upstream'])}</code>
             <span class="probe">{probe}</span>
           </div>"""
     aliases = [h for h in s["hosts"] if h != s["primary_host"]]
@@ -79,7 +79,7 @@ async def dashboard(request: Request):
             <div class="grid">{cards}</div>
           </div>"""
 
-    err_html = "".join(f"<p class='err'>⚠ {e}</p>" for e in errors)
+    err_html = "".join(f"<p class='err'>⚠ {escape(e)}</p>" for e in errors)
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">

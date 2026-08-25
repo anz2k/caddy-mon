@@ -13,11 +13,11 @@ _state = {
 }
 
 
-def _get_json(path: str):
+async def _get_json(path: str):
     """GET CADDY_API + path, return dict (or {"_error": ...} on failure)."""
     try:
-        with httpx.Client(timeout=5.0) as c:
-            r = c.get(f"{CADDY_API}{path}")
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            r = await c.get(f"{CADDY_API}{path}")
             if r.status_code != 200:
                 return {"_error": f"HTTP {r.status_code}"}
             return r.json()
@@ -158,7 +158,7 @@ async def refresh():
     ingest_logs()
 
     errors = []
-    servers_cfg = _get_json("/config/apps/http/servers")
+    servers_cfg = await _get_json("/config/apps/http/servers")
     if "_error" in servers_cfg:
         errors.append(f"Caddy admin API unreachable: {servers_cfg['_error']}")
         _state["errors"] = errors

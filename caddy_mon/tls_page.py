@@ -1,5 +1,6 @@
 """TLS certificate expiry page and /api/tls."""
 
+from html import escape
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 from .config import TZ
@@ -19,7 +20,7 @@ def tls_page(request: Request):
         hosts = ", ".join(e["hosts"]) if e["hosts"] else "(unknown)"
         not_after = datetime.fromisoformat(e["not_after"]).strftime("%Y-%m-%d") if e["not_after"] else "?"
         rows += f"""<tr>
-          <td>{hosts}</td>
+          <td>{escape(hosts)}</td>
           <td style="color:{color}">{e['days_left']}d</td>
           <td>{not_after}</td>
         </tr>"""
