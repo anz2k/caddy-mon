@@ -146,10 +146,25 @@ multiple servers (e.g. for different listen ports or site groups).
 **What it adds:** An interactive "🛠️ Maint" toggle button on each card allowing administrators to place a site into planned maintenance mode.
 **How it works:** When a site is in maintenance mode, its status changes to amber `MAINTENANCE` on the dashboard and status page, and automated `DOWN` alerts to Telegram / Webhooks are suppressed to avoid false alarms.
 
-## Optional Authentication
+## Live Search & Status Filtering
 
-**What it adds:** Optional HTTP Basic Auth security layer configurable via `AUTH_USER` and `AUTH_PASSWORD` in `.env`.
-**How it works:** When enabled, protects administrative dashboard pages, APIs, and diagnostics routes (`/`, `/topology`, `/logs`, `/tls`, `/security`, `/caddy/config`, `/api/probe/*`) using constant-time string comparison (`secrets.compare_digest`), while leaving the public status page (`/status`, `/status/feed.xml`) accessible.
+**What it adds:** Instant search input (with `/` keyboard shortcut), status filter pills (`All`, `Alive`, `Down`, `Maint`, `>100ms`), and multi-attribute sorting (`Domain Groups`, `Latency`, `Uptime`, `Alphabetical`).
+**How it works:** Real-time client-side filtering matching hostnames, aliases, or upstream IP addresses with zero lag.
+
+## Site Deep-Dive Inspector Modal
+
+**What it adds:** An interactive modal / drawer accessible by clicking on any site card or info button.
+**How it works:** Queries `GET /api/site/{host}/details`, presenting 24h & 7d latency graphs, min/avg/max latency statistics, a live stream of the host's recent requests from the access log, and dedicated incident history.
+
+## Automated ACME & Custom TLS Discovery
+
+**What it adds:** Automated scanning of Caddy's ACME certificate storage (`/caddy-data` and `/data/caddy/certificates`) in addition to manual certs (`/caddy-certs`).
+**How it works:** Recursively parses X.509 certificate PEMs, matching domain SANs and calculating expiration dates for Let's Encrypt, ZeroSSL, and custom certificates.
+
+## Infrastructure Export
+
+**What it adds:** Complete infrastructure state and history export endpoint (`GET /api/export`).
+**How it works:** Exports current routes, health state, active maintenance mapping, and recent incident events as a portable JSON payload for backups or automation.
 
 ## Planned / future (not yet implemented)
 

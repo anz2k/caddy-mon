@@ -183,6 +183,23 @@ def host_log_stats(hosts: Union[str, List[str]], window: int = 3600):
     return {"requests": req, "errors_5xx": err, "error_pct": round(err / req * 100, 1)}
 
 
+def get_host_recent_logs(hosts: Union[str, List[str]], limit: int = 50) -> List[Dict[str, Any]]:
+    """Return the most recent log entries matching a primary host or any of its aliases."""
+    ingest_logs()
+    if isinstance(hosts, str):
+        target_hosts: Set[str] = {_normalize_host(hosts)}
+    else:
+        target_hosts = {_normalize_host(h) for h in hosts if h}
+
+    matches = []
+    for e in reversed(_LOG_CACHE):
+        if e.get("host") in target_hosts:
+            matches.append(e)
+            if len(matches) >= limit:
+                break
+    return matches
+
+
 def log_stats(window: int = 3600):
     """Aggregate recent log entries over the last `window` seconds."""
     ingest_logs()

@@ -8,6 +8,9 @@ latency, and last check time — pulled straight from the Caddy admin API.
 ## Features
 
 - **Live health dashboard** — live alive/dead + latency per proxied site with zero-flicker SSE updates
+- **Live Search & Status Filtering** — instant search (`/` shortcut), quick status filter pills (`All`, `Alive`, `Down`, `Maint`, `>100ms`), and multi-attribute sorting
+- **Site Deep-Dive Inspector Modal** — click any card to inspect 24h/7d latency stats (min/avg/max), host-specific access logs, and incident timelines
+- **Automated ACME & Custom TLS Discovery** — monitors Let's Encrypt / ZeroSSL automatic certificates alongside manual certs with expiration countdowns
 - **Public Status Page & RSS Feed** — clean public status overview (`/status`) with 30-day uptime history bars and RSS 2.0 incident feed (`/status/feed.xml`)
 - **Security & Client Analytics** — top client IPs, 4xx/429 rate limit events, status code distribution, and LAN/WAN classification at `/security`
 - **Caddy Control Plane & Config Inspector** — active JSON configuration viewer with download and zero-downtime reload (`/caddy/config`)
@@ -20,7 +23,6 @@ latency, and last check time — pulled straight from the Caddy admin API.
 - **Multi-server Caddy** — reads routes from all Caddy HTTP servers (srv0, srv1, ...), not just srv0
 - **Combined health** — Caddy `healthy` metric + self-probe; connection-refused overrides a stale healthy=1
 - **Log analytics** — per-host request/5xx/error% over a time window (compact line on each dashboard card + full view at `/logs`, JSON at `/api/logs`)
-- **TLS expiry** — certificate expiry monitoring at `/tls` (JSON at `/api/tls`); a compact `🔒 NNd` line on each dashboard card warns when <30 days remain
 - **Embedded SQLite history** — persistent snapshots in `/data/caddy_mon.db` auto-pruned after 7 days
 - **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
 - **Domain grouping** — sites grouped by parent domain (lope.ee, kaaber.ee, lope.lan) on the dashboard

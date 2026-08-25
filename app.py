@@ -1,12 +1,13 @@
 """caddy-mon — FastAPI entry point.
 
-Wires the Caddy/Log sources, SQLite history, SSE streaming, authentication,
-public status page, security analytics, Caddy control plane, and page modules into a single app.
+Wires Caddy/Log sources, SQLite persistent history, SSE real-time streaming,
+auth, public status page, security analytics, Caddy control plane, and deep-dive APIs.
 """
 
 import asyncio
+import time
 from contextlib import asynccontextmanager
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, Request, Depends, Body
 from fastapi.responses import HTMLResponse, StreamingResponse
 
@@ -19,8 +20,11 @@ from caddy_mon.db import (
     get_recent_incidents,
     set_maintenance,
     get_all_maintenance,
+    get_host_extended_history,
+    get_host_incidents,
 )
-from caddy_mon.caddy_source import refresh, background_poll_loop
+from caddy_mon.log_source import get_host_recent_logs
+from caddy_mon.caddy_source import refresh, background_poll_loop, _state
 from caddy_mon.sse import sse_event_stream
 from caddy_mon.dashboard import dashboard, api_state
 from caddy_mon.status_page import status_page, api_status, status_feed_xml
@@ -108,6 +112,45 @@ async def api_history_route(host: str, hours: int = 24):
         "host": host,
         "uptime_24h": get_site_uptime_24h(host),
         "sparkline": get_site_sparkline(host, hours=hours),
+    }
+
+
+@app.get("/api/site/{host}/details", dependencies=[Depends(require_auth)])
+async def api_site_details_route(host: str):
+    """Return comprehensive deep-dive details, history, recent logs, and incidents for a host."""
+    await refresh()
+    site_obj = None
+    all_hosts = [host]
+    for s in _state.get("sites", []):
+        if s.get("primary_host") == host or host in s.get("hosts", []):
+            site_obj = s
+            all_hosts = s.get("hosts", [host])
+            break
+
+    history_data = get_host_extended_history(host)
+    recent_logs = get_host_recent_logs(all_hosts, limit=40)
+    incidents = get_host_incidents(host, limit=15)
+    maintenance_map = get_all_maintenance()
+
+    return {
+        "host": host,
+        "site": site_obj,
+        "history": history_data,
+        "recent_logs": recent_logs,
+        "incidents": incidents,
+        "maintenance": maintenance_map.get(host),
+    }
+
+
+@app.get("/api/export", dependencies=[Depends(require_auth)])
+async def api_export_route():
+    """Export complete infrastructure status report as a JSON payload."""
+    await refresh()
+    return {
+        "exported_at": time.time(),
+        "state": _state,
+        "maintenance": get_all_maintenance(),
+        "recent_incidents": get_recent_incidents(limit=50),
     }
 
 

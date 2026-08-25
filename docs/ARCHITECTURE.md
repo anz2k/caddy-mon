@@ -50,6 +50,8 @@ ports or site groups). All are merged into the dashboard/topology view.
 | `GET /api/state` | JSON: `{last_update, sites[], errors[]}` | Protected |
 | `GET /api/events` | Server-Sent Events (SSE) live streaming updates | Protected |
 | `GET /api/history/{host}` | JSON: `{host, uptime_24h, sparkline[]}` | Protected |
+| `GET /api/site/{host}/details` | JSON: comprehensive deep-dive details, extended history, recent logs, and incidents | Protected |
+| `GET /api/export` | JSON: full infrastructure status and incident export | Protected |
 | `GET /api/incidents` | JSON: `{incidents[]}` (recent DOWN/RECOVERED events) | Protected |
 | `POST /api/probe/{host}` | Immediate on-demand diagnostic probe of all upstreams for a host | Protected |
 | `POST /api/maintenance/{host}` | Enable or disable maintenance mode for a host | Protected |
@@ -72,7 +74,8 @@ ports or site groups). All are merged into the dashboard/topology view.
 - `site_snapshots` records periodic health, alive status, and latency.
 - `site_maintenance` records planned maintenance windows and reasons.
 - `get_site_uptime_24h(host)` calculates rolling 24h uptime percentage.
-- `get_site_sparkline(host)` computes 12-point bucketed average latency for mini SVG rendering.
+- `get_site_sparkline(host)` computes 12-point or 24-point bucketed average latency for mini SVG rendering.
+- `get_host_extended_history(host)` computes min, max, avg latencies over rolling 24h and 7d periods.
 - `prune_old_history(days=7)` automatically purges snapshots older than retention limit.
 
 ## Alerting & maintenance internals
@@ -101,10 +104,10 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 | `caddy_mon/caddy_control.py` | Interactive Caddy control plane: active JSON configuration inspector and reloader |
 | `caddy_mon/diagnostics.py` | On-demand detailed upstream probing (`POST /api/probe/{host}`) |
 | `caddy_mon/caddy_source.py` | Caddy admin API: routes, health metrics, async probes, background loop |
-| `caddy_mon/log_source.py` | Access-log ingestion: port stripping, client IP tracking, `host_log_stats()`, `log_stats()` |
-| `caddy_mon/tls_source.py` | TLS cert parsing: `cert_status()`, expiry tracking |
-| `caddy_mon/dashboard.py` | Dashboard HTML page with SVG sparklines + `/api/state` |
+| `caddy_mon/log_source.py` | Access-log ingestion: port stripping, client IP tracking, `get_host_recent_logs()`, `log_stats()` |
+| `caddy_mon/tls_source.py` | TLS cert parsing: automated ACME & manual cert discovery, expiry tracking |
+| `caddy_mon/dashboard.py` | Modern Tailwind dashboard with search, quick filters, sorting, and Site Inspector Modal |
 | `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
 | `caddy_mon/tls_page.py` | TLS expiry HTML page + `/api/tls` |
-| `tests/` | Comprehensive unit tests (52 unit tests across 12 test suites) + live Caddy integration tests |
+| `tests/` | Comprehensive unit tests (54 unit tests across 13 test suites) + live Caddy integration tests |

@@ -342,3 +342,68 @@ def get_all_maintenance() -> Dict[str, Dict[str, Any]]:
             }
     except sqlite3.Error:
         return {}
+
+
+def get_host_incidents(host: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """Return past incidents specific to a single host."""
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT id, ts, host, event_type, details, resolved_ts
+                FROM incident_events
+                WHERE host = ?
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (host, limit),
+            )
+            return [
+                {
+                    "id": r["id"],
+                    "ts": r["ts"],
+                    "host": r["host"],
+                    "event_type": r["event_type"],
+                    "details": r["details"],
+                    "resolved_ts": r["resolved_ts"],
+                }
+                for r in cur.fetchall()
+            ]
+    except sqlite3.Error:
+        return []
+
+
+def get_host_extended_history(host: str, now: Optional[float] = None) -> Dict[str, Any]:
+    """Return detailed 24h & 7d latency statistics and min/avg/max metrics."""
+    ts_now = now or time.time()
+    cutoff_24h = ts_now - 86400.0
+
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT latency_ms, alive
+                FROM site_snapshots
+                WHERE host = ? AND ts >= ? AND alive = 1
+                ORDER BY ts ASC
+                """,
+                (host, cutoff_24h),
+            )
+            latencies = [float(r["latency_ms"]) for r in cur.fetchall() if r["latency_ms"] is not None]
+    except sqlite3.Error:
+        latencies = []
+
+    min_latency = round(min(latencies), 1) if latencies else None
+    max_latency = round(max(latencies), 1) if latencies else None
+    avg_latency = round(sum(latencies) / len(latencies), 1) if latencies else None
+
+    return {
+        "host": host,
+        "uptime_24h": get_site_uptime_24h(host, now=ts_now),
+        "sparkline_24h": get_site_sparkline(host, hours=24, points=24, now=ts_now),
+        "sparkline_7d": get_site_sparkline(host, hours=168, points=28, now=ts_now),
+        "min_latency_ms": min_latency,
+        "max_latency_ms": max_latency,
+        "avg_latency_ms": avg_latency,
+        "sample_count": len(latencies),
+    }
