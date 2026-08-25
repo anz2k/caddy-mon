@@ -4,7 +4,7 @@ import os
 import json
 import time
 from datetime import datetime
-from typing import Optional, Union, List, Set
+from typing import Optional, Union, List, Set, Dict, Any
 from .config import LOG_PATH
 
 _LOG_OFFSET = {"pos": 0, "inode": None}
