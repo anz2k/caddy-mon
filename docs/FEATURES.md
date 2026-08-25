@@ -63,15 +63,32 @@ full table view is available at `/logs` (auto-refreshes every 30s) with JSON
 at `/api/logs?window=N` (seconds, default 3600). The full view also lists
 recent 5xx errors with timestamp, host, status, and URI.
 
-**How it works:** `_ingest_logs()` tails `/caddy-logs/access.log` (Caddy JSON
+**How it works:** `ingest_logs()` tails `/caddy-logs/access.log` (Caddy JSON
 access log) incrementally — it tracks file position + inode so a log rotation
 restarts cleanly, and filters out caddy-mon's own `admin.api` polling noise.
-Parsed entries are kept in an in-memory ring buffer (last ~5000). `_log_stats()`
+Parsed entries are kept in an in-memory ring buffer (last ~5000). `log_stats()`
 aggregates entries within the window into per-host stats.
 
 **Why:** Surfaces backend errors that health checks miss — e.g. "pildid.lope.ee
 returned 502 N times in the last hour" shows up here even if Caddy still
 reports the upstream as healthy.
+
+## TLS expiry
+
+**What it adds:** A compact `🔒 NNd` line under each dashboard card shows the
+TLS certificate expiry for that host's certificate (red if fewer than 30 days
+remain). A full table view is available at `/tls` with JSON at `/api/tls`.
+
+**How it works:** Cert files mounted at `/caddy-certs` are parsed with the
+`cryptography` library. `cert_status()` reads each PEM, extracts SANs and the
+`not_valid_after` date, and computes days left. `refresh()` matches each site's
+hosts against cert SANs via `_site_tls()` and attaches the result to the card.
+The `/tls` page lists all mounted certs sorted by urgency.
+
+**Why:** Manual (non-ACME) certificates — like `idm.lope.lan` and
+`trek.lope.lan` — do not auto-renew and can expire silently. This surfaces the
+countdown before it becomes an outage. (Sites covered by ACME-managed certs
+show `n/a` because those cert files are not mounted.)
 
 ## Multi-server Caddy support
 
@@ -89,4 +106,4 @@ multiple servers (e.g. for different listen ports or site groups).
 ## Planned / future (not yet implemented)
 
 See the development plan (private, not in this repo) for the backlog:
-TLS expiry tracking, Telegram alerts.
+Telegram alerts.

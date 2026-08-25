@@ -49,6 +49,8 @@ ports or site groups). All are merged into the dashboard/topology view.
 | `GET /api/topology` | JSON: `{nodes[], edges[]}` for the route map |
 | `GET /logs` | HTML log analytics (per-host 5xx/error%, recent 5xx) |
 | `GET /api/logs` | JSON: `{window_seconds, rows[], recent_5xx[]}` |
+| `GET /tls` | HTML TLS certificate expiry table |
+| `GET /api/tls` | JSON: `{entries[], warn_days}` |
 
 ## Log analytics internals
 
@@ -59,6 +61,18 @@ ports or site groups). All are merged into the dashboard/topology view.
   `for line in f` + `tell()`, which raises OSError on Python).
 - `admin.api` logger entries (caddy-mon's own polling) are filtered out.
 - Entries are kept in an in-memory ring buffer capped at ~5000 to bound memory.
+
+## TLS monitoring internals
+
+- Source: certificate files mounted read-only at `/caddy-certs` (from the
+  host's Caddy cert directory; configured in `docker-compose.yml`).
+- `cert_status()` parses each `.crt` with the `cryptography` library, extracts
+  the SAN list and `not_valid_after` date, and computes days left.
+- `_site_tls(hosts)` matches a site's hostnames against cert SANs and returns
+  the soonest-expiring match, so the dashboard card shows the most urgent
+  countdown.
+- Sites covered by ACME-managed certs (no mounted file) show `n/a` on the card.
+- `WARN_DAYS = 30`: certs with fewer days left are flagged red.
 
 ## Why no Prometheus/Grafana
 
