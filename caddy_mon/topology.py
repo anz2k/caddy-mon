@@ -1,11 +1,18 @@
-"""Route topology: API + SVG HTML page."""
+"""Route topology: API + SVG HTML page with modern Tailwind CSS design."""
 
 from html import escape
-from fastapi import Request
-from fastapi.responses import HTMLResponse
+from datetime import datetime
+from typing import Any
+
+try:
+    from fastapi import Request
+    from fastapi.responses import HTMLResponse
+except ImportError:
+    Request = Any  # type: ignore
+    HTMLResponse = Any  # type: ignore
+
 from .config import TZ
 from .caddy_source import _state, _group_hosts_by_tld
-from datetime import datetime
 
 
 def api_topology():
@@ -15,7 +22,7 @@ def api_topology():
     per (site, path) branch (mid-right), each upstream dial (right).
     Edges: host -> path -> proxy -> upstream.
     """
-    sites = _state["sites"]
+    sites = _state.get("sites", [])
     nodes = []
     edges = []
     node_ids = set()
@@ -28,7 +35,7 @@ def api_topology():
     for s in sites:
         site_id = f"site:{s['primary_host']}"
         add_node(site_id, s["primary_host"], 0, "host")
-        for branch in s["paths"]:
+        for branch in s.get("paths", []):
             path_label = " / ".join(branch["paths"]) if branch["paths"] else "/"
             path_id = f"{site_id}|path|{path_label}"
             add_node(path_id, path_label, 1, "path")
@@ -36,10 +43,10 @@ def api_topology():
             proxy_id = f"{path_id}|proxy"
             add_node(proxy_id, "Caddy proxy", 2, "proxy")
             edges.append({"from": path_id, "to": proxy_id, "healthy": s["alive"]})
-            for up in branch["upstreams"]:
+            for up in branch.get("upstreams", []):
                 up_id = f"up:{up}"
                 up_healthy = None
-                for u in s["upstreams"]:
+                for u in s.get("upstreams", []):
                     if u["upstream"] == up:
                         up_healthy = u["caddy_healthy"]
                         break
@@ -61,73 +68,127 @@ async def topology(request: Request):
 
     col_x = {0: 40, 1: 280, 2: 520, 3: 760}
     col_cursor = {0: 20, 1: 20, 2: 20, 3: 20}
-    row_h = 46
+    row_h = 48
     pos = {}
     for n in nodes:
         y = col_cursor[n["col"]]
         col_cursor[n["col"]] += row_h
         pos[n["id"]] = (col_x[n["col"]], y)
 
-    svg = ['<svg width="960" height="{}" font-family="system-ui">'.format(
-        max(col_cursor.values()) + 20)]
+    svg_height = max(col_cursor.values()) + 30
+    svg = [f'<svg width="960" height="{svg_height}" class="font-sans">']
 
     for e in edges:
         x1, y1 = pos[e["from"]]
         x2, y2 = pos[e["to"]]
-        color = "#16a34a" if e.get("healthy") is True else ("#dc2626" if e.get("healthy") is False else "#6b7280")
+        color = "#10b981" if e.get("healthy") is True else ("#e11d48" if e.get("healthy") is False else "#88929b")
         svg.append(f'<line x1="{x1+150}" y1="{y1+18}" x2="{x2}" y2="{y2+18}" stroke="{color}" stroke-width="1.5" marker-end="url(#arrow)"/>')
 
     for n in nodes:
         x, y = pos[n["id"]]
         if n["kind"] == "host":
-            fill, stroke = "#1e3a5f", "#3b82f6"
+            fill, stroke = "#1e293b", "#0ea5e9"
         elif n["kind"] == "path":
-            fill, stroke = "#3a2e12", "#f59e0b"
+            fill, stroke = "#1e293b", "#f59e0b"
         elif n["kind"] == "proxy":
-            fill, stroke = "#3f6212", "#84cc16"
+            fill, stroke = "#1e293b", "#84cc16"
         else:
             h = n.get("healthy")
             if h is True:
-                fill, stroke = "#14321f", "#16a34a"
+                fill, stroke = "#131b2e", "#10b981"
             elif h is False:
-                fill, stroke = "#3a1e1e", "#f87171"
+                fill, stroke = "#1e293b", "#e11d48"
             else:
-                fill, stroke = "#2a2a2a", "#9ca3af"
-        svg.append(f'<g><rect x="{x}" y="{y}" width="150" height="36" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>'
-                   f'<text x="{x+75}" y="{y+22}" fill="#e5e7eb" font-size="12" text-anchor="middle" font-family="system-ui">{escape(n["label"][:22])}</text></g>')
-    svg.append('<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#9ca3af"/></marker></defs>')
+                fill, stroke = "#1e293b", "#88929b"
+        svg.append(
+            f'<g><rect x="{x}" y="{y}" width="150" height="36" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>'
+            f'<text x="{x+75}" y="{y+22}" fill="#f8fafc" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono, monospace">{escape(n["label"][:22])}</text></g>'
+        )
+    svg.append('<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#88929b"/></marker></defs>')
     svg.append('</svg>')
 
-    total = len(_state["sites"])
-    alive = sum(1 for s in _state["sites"] if s["alive"])
+    sites = _state.get("sites", [])
+    total = len(sites)
+    alive = sum(1 for s in sites if s.get("alive"))
+
     html = f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Caddy Mon — Topology</title>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Caddy Mon - Route Topology</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {{
+    darkMode: "class",
+    theme: {{
+      extend: {{
+        colors: {{
+          background: "#0f172a",
+          "surface-container": "#1e293b",
+          primary: "#0ea5e9",
+          "on-surface": "#f8fafc",
+          "on-surface-variant": "#bec8d2",
+          outline: "#88929b",
+          "status-alive": "#10b981",
+          "status-down": "#e11d48",
+          "status-maint": "#f59e0b",
+        }},
+        fontFamily: {{
+          sans: ["Geist", "sans-serif"],
+          mono: ["JetBrains Mono", "monospace"],
+        }},
+        spacing: {{
+          "container-max": "1440px",
+          "gutter": "1.5rem",
+        }}
+      }}
+    }}
+  }}
+</script>
 <style>
-  :root {{ color-scheme: dark; }}
-  body {{ font-family: system-ui, sans-serif; background:#0f1115; color:#e5e7eb; margin:0; padding:24px; }}
-  h1 {{ font-size:20px; margin:0 0 4px; }}
-  .sub {{ color:#9ca3af; font-size:13px; margin-bottom:20px; }}
-  .legend {{ display:flex; gap:16px; margin-bottom:16px; font-size:12px; color:#9ca3af; }}
-  .legend span {{ display:inline-flex; align-items:center; gap:6px; }}
-  .box {{ width:12px; height:12px; border-radius:3px; display:inline-block; }}
-  a {{ color:#60a5fa; }}
-</style></head>
-<body>
-  <h1>Caddy Mon — Route Topology</h1>
-  <div class="sub">{total} sites · {alive} alive · updated {datetime.now(TZ).strftime('%H:%M:%S')} · <a href="/">dashboard</a></div>
-  <div class="legend">
-    <span><i class="box" style="background:#3b82f6"></i> host</span>
-    <span><i class="box" style="background:#f59e0b"></i> path</span>
-    <span><i class="box" style="background:#84cc16"></i> Caddy proxy</span>
-    <span><i class="box" style="background:#16a34a"></i> upstream (green=healthy)</span>
-    <span><i class="box" style="background:#f87171"></i> upstream (red=unhealthy)</span>
-    <span><i class="box" style="background:#9ca3af"></i> upstream (gray=unknown)</span>
-  </div>
-  {''.join(svg)}
-  <script>
-    setTimeout(() => location.reload(), 12000);
-  </script>
+  body {{ background-color: #0f172a; color: #f8fafc; font-family: 'Geist', sans-serif; }}
+  .no-scrollbar::-webkit-scrollbar {{ display: none; }}
+  .no-scrollbar {{ -ms-overflow-style: none; scrollbar-width: none; }}
+</style>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col antialiased">
+  <header class="bg-background docked full-width top-0 flex flex-col gap-2 w-full pt-6 px-gutter max-w-container-max mx-auto">
+    <div class="flex justify-between items-center w-full">
+      <h1 class="text-2xl font-bold text-on-surface tracking-tight font-sans">Caddy Mon</h1>
+      <div class="flex items-center gap-2 text-xs font-mono text-on-surface-variant">
+        <span>{total} sites</span>
+        <span>•</span>
+        <span class="text-status-alive font-bold">{alive} alive</span>
+      </div>
+    </div>
+
+    <!-- Navigation Bar -->
+    <nav class="flex gap-6 mt-2 overflow-x-auto pb-1 no-scrollbar border-b border-white/5 text-xs font-bold uppercase tracking-wider font-sans">
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/">Dashboard</a>
+      <a class="text-primary border-b-2 border-primary pb-2 whitespace-nowrap" href="/topology">Topology</a>
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/logs">Logs</a>
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/security">Security</a>
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/tls">TLS</a>
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/caddy/config">Caddy Config</a>
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/status">Status Page</a>
+    </nav>
+  </header>
+
+  <main class="flex-1 w-full max-w-container-max mx-auto px-gutter py-8 flex flex-col gap-6">
+    <div class="flex flex-wrap gap-4 text-xs font-mono text-on-surface-variant">
+      <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-xs bg-[#0ea5e9]"></i> host</span>
+      <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-xs bg-[#f59e0b]"></i> path matcher</span>
+      <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-xs bg-[#84cc16]"></i> Caddy proxy</span>
+      <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-xs bg-[#10b981]"></i> healthy upstream</span>
+      <span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-xs bg-[#e11d48]"></i> unhealthy upstream</span>
+    </div>
+
+    <div class="bg-[#1e293b] border border-white/10 rounded-lg p-6 overflow-x-auto">
+      {''.join(svg)}
+    </div>
+  </main>
+  <script>setTimeout(() => location.reload(), 15000);</script>
 </body></html>"""
     return HTMLResponse(html)

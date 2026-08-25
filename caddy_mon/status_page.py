@@ -36,18 +36,16 @@ def _is_private_host(host: str) -> bool:
 
 
 def _render_uptime_bars(uptime_pct: float = 100.0, days: int = 30) -> str:
-    """Render 30 mini daily uptime blocks (similar to modern status page UI)."""
+    """Render 30 mini daily uptime blocks with Tailwind styling."""
     blocks = []
-    # If 100% uptime -> all green
-    # If degraded -> few amber/red blocks
     for i in range(days):
         if uptime_pct is None or uptime_pct >= 99.0:
-            color = "#16a34a"  # Green
+            bg_cls = "bg-status-alive"
         elif uptime_pct >= 95.0:
-            color = "#f59e0b" if i in (10, 20) else "#16a34a"
+            bg_cls = "bg-status-maint" if i in (10, 20) else "bg-status-alive"
         else:
-            color = "#dc2626" if i in (5, 12, 18, 25) else "#16a34a"
-        blocks.append(f'<span class="uptime-bar" style="background:{color}"></span>')
+            bg_cls = "bg-status-down" if i in (5, 12, 18, 25) else "bg-status-alive"
+        blocks.append(f'<span class="flex-1 h-3 rounded-xs min-w-[3px] {bg_cls}"></span>')
     return "".join(blocks)
 
 
@@ -96,7 +94,6 @@ def api_status() -> Dict[str, Any]:
         system_status = "maintenance"
         status_message = "Scheduled Maintenance in Progress"
 
-    # Sanitized public incidents
     incidents = []
     for inc in get_recent_incidents(limit=15):
         if not _is_private_host(inc.get("host", "")):
@@ -153,141 +150,185 @@ def status_feed_xml() -> Response:
 
 
 async def status_page(request: Request) -> HTMLResponse:
-    """Render public-facing status page with system health and incident history."""
+    """Render modern public-facing status page with system health and incident history."""
     await refresh()
     data = api_status()
     services = data["services"]
     incidents = data["incidents"]
 
-    # Status banner styling
     if data["status"] == "operational":
-        banner_bg = "#14321f"
-        banner_border = "#16a34a"
-        banner_icon = "🟢"
+        banner_bg = "bg-status-alive/10"
+        banner_border = "border-status-alive/30"
+        banner_text = "text-status-alive"
+        banner_icon = "check_circle"
     elif "outage" in data["status"]:
-        banner_bg = "#3a1e1e"
-        banner_border = "#dc2626"
-        banner_icon = "🔴"
+        banner_bg = "bg-status-down/10"
+        banner_border = "border-status-down/30"
+        banner_text = "text-status-down"
+        banner_icon = "error"
     else:
-        banner_bg = "#3a2e12"
-        banner_border = "#f59e0b"
-        banner_icon = "🛠️"
+        banner_bg = "bg-status-maint/10"
+        banner_border = "border-status-maint/30"
+        banner_text = "text-status-maint"
+        banner_icon = "build"
 
-    # Render public service rows
     rows_html = ""
     for s in services:
         if s["maintenance"]:
-            badge = '<span class="status-badge badge-maint">Maintenance</span>'
+            badge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider font-mono bg-status-maint/15 text-status-maint border border-status-maint/20">Maintenance</span>'
+            state_type = "maint"
         elif s["operational"]:
-            badge = '<span class="status-badge badge-ok">Operational</span>'
+            badge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider font-mono bg-status-alive/15 text-status-alive border border-status-alive/20">Operational</span>'
+            state_type = "alive"
         else:
-            badge = '<span class="status-badge badge-down">Outage</span>'
+            badge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider font-mono bg-status-down/15 text-status-down border border-status-down/20">Outage</span>'
+            state_type = "down"
 
         uptime_val = s.get("uptime_24h")
         uptime_str = f"{uptime_val}% (24h)" if uptime_val is not None else "99.9%"
-        spark_svg = _render_sparkline_svg(s.get("sparkline") or [], s.get("operational", False))
+        spark_svg = _render_sparkline_svg(s.get("sparkline") or [], state_type)
         bars_html = _render_uptime_bars(uptime_val or 100.0)
 
         rows_html += f"""
-          <div class="service-card">
-            <div class="service-main">
-              <div class="service-info">
-                <span class="service-name">{escape(s['service'])}</span>
-                <span class="service-uptime">{uptime_str}</span>
+          <div class="p-4 border-b border-white/5 last:border-b-0 flex flex-col gap-3">
+            <div class="flex justify-between items-center">
+              <div class="flex flex-col">
+                <span class="text-sm font-semibold font-mono text-on-surface">{escape(s['service'])}</span>
+                <span class="text-xs font-mono text-on-surface-variant">{uptime_str}</span>
               </div>
-              <div class="service-right">
+              <div class="flex items-center gap-4">
                 {spark_svg}
                 {badge}
               </div>
             </div>
-            <div class="bars-container">
-              <div class="bars-lbl">30 days ago</div>
-              <div class="bars-row">{bars_html}</div>
-              <div class="bars-lbl">Today</div>
+            <div class="flex items-center justify-between gap-2 mt-1">
+              <span class="text-[10px] font-mono text-outline whitespace-nowrap">30 days ago</span>
+              <div class="flex gap-1 flex-grow items-center">{bars_html}</div>
+              <span class="text-[10px] font-mono text-outline whitespace-nowrap">Today</span>
             </div>
           </div>"""
 
     if not rows_html:
-        rows_html = '<div class="no-services">No public services configured</div>'
+        rows_html = '<div class="text-sm text-outline text-center py-6 font-sans">No public services configured</div>'
 
-    # Render incidents
     inc_html = ""
     for inc in incidents:
         ts_str = datetime.fromtimestamp(inc["timestamp"], TZ).strftime("%b %d, %H:%M") if inc.get("timestamp") else "Recent"
-        status_color = "#16a34a" if inc["status"] == "Resolved" else "#dc2626"
+        status_color = "text-status-alive" if inc["status"] == "Resolved" else "text-status-down"
         inc_html += f"""
-          <div class="incident-item">
-            <div class="inc-time">{ts_str}</div>
-            <div class="inc-body">
-              <strong>{escape(inc['service'])}</strong> — <span style="color:{status_color}">{inc['status']}</span>
+          <div class="py-3 border-b border-white/5 last:border-b-0 flex gap-4 text-xs font-sans">
+            <span class="text-outline font-mono min-w-[90px]">{ts_str}</span>
+            <div class="flex-1">
+              <strong class="font-mono text-on-surface">{escape(inc['service'])}</strong> — 
+              <span class="{status_color} font-semibold">{inc['status']}</span>
             </div>
           </div>"""
 
     if not inc_html:
-        inc_html = '<div class="no-incidents">No incidents reported in the last 7 days.</div>'
+        inc_html = '<div class="text-sm text-outline text-center py-6 font-sans">No incidents reported in the last 7 days.</div>'
 
     html = f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <link rel="alternate" type="application/rss+xml" title="{escape(STATUS_TITLE)} RSS Feed" href="/status/feed.xml" />
 <title>{escape(STATUS_TITLE)}</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {{
+    darkMode: "class",
+    theme: {{
+      extend: {{
+        colors: {{
+          background: "#0f172a",
+          "surface-container": "#1e293b",
+          primary: "#0ea5e9",
+          "on-surface": "#f8fafc",
+          "on-surface-variant": "#bec8d2",
+          outline: "#88929b",
+          "status-alive": "#10b981",
+          "status-down": "#e11d48",
+          "status-maint": "#f59e0b",
+        }},
+        fontFamily: {{
+          sans: ["Geist", "sans-serif"],
+          mono: ["JetBrains Mono", "monospace"],
+        }}
+      }}
+    }}
+  }}
+</script>
 <style>
-  :root {{ color-scheme: dark; }}
-  body {{ font-family: system-ui, sans-serif; background:#0f1115; color:#e5e7eb; margin:0; padding:32px 16px; display:flex; justify-content:center; }}
-  .container {{ width:100%; max-width:760px; }}
-  .header {{ margin-bottom:24px; text-align:center; }}
-  h1 {{ font-size:24px; margin:0 0 6px; font-weight:700; }}
-  .sub {{ color:#9ca3af; font-size:13px; }}
-  .banner {{ background:{banner_bg}; border:1px solid {banner_border}; border-radius:10px; padding:16px 20px; font-size:16px; font-weight:600; margin-bottom:28px; display:flex; align-items:center; gap:12px; }}
-  .section-title {{ font-size:16px; font-weight:600; color:#9ca3af; margin:0 0 12px; }}
-  .services-list {{ background:#1a1d24; border-radius:10px; overflow:hidden; margin-bottom:32px; border:1px solid #2a2d35; }}
-  .service-card {{ padding:14px 18px; border-bottom:1px solid #2a2d35; }}
-  .service-card:last-child {{ border-bottom:none; }}
-  .service-main {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }}
-  .service-info {{ display:flex; flex-direction:column; gap:2px; }}
-  .service-name {{ font-weight:600; font-size:15px; }}
-  .service-uptime {{ font-size:12px; color:#9ca3af; }}
-  .service-right {{ display:flex; align-items:center; gap:16px; }}
-  .status-badge {{ padding:4px 8px; border-radius:6px; font-size:12px; font-weight:600; }}
-  .badge-ok {{ background:#14321f; color:#4ade80; }}
-  .badge-down {{ background:#3a1e1e; color:#f87171; }}
-  .badge-maint {{ background:#3a2e12; color:#fbbf24; }}
-  .bars-container {{ display:flex; align-items:center; justify-content:space-between; gap:8px; }}
-  .bars-row {{ display:flex; gap:3px; flex-grow:1; }}
-  .uptime-bar {{ flex:1; height:12px; border-radius:2px; min-width:3px; }}
-  .bars-lbl {{ font-size:10px; color:#6b7280; white-space:nowrap; }}
-  .incidents-list {{ background:#1a1d24; border-radius:10px; padding:16px 20px; border:1px solid #2a2d35; }}
-  .incident-item {{ padding:10px 0; border-bottom:1px solid #2a2d35; font-size:13px; display:flex; gap:16px; }}
-  .incident-item:last-child {{ border-bottom:none; }}
-  .inc-time {{ color:#9ca3af; min-width:100px; }}
-  .no-incidents, .no-services {{ color:#9ca3af; font-size:13px; padding:14px 0; text-align:center; }}
-  .footer {{ text-align:center; margin-top:32px; font-size:12px; color:#6b7280; display:flex; justify-content:center; gap:12px; }}
-  .footer a {{ color:#60a5fa; text-decoration:none; }}
-</style></head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>{escape(STATUS_TITLE)}</h1>
-      <div class="sub">Live service availability & incident reports</div>
+  body {{ background-color: #0f172a; color: #f8fafc; font-family: 'Geist', sans-serif; }}
+  .sparkline-live {{ stroke: #10b981; stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }}
+  .sparkline-down {{ stroke: #e11d48; stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }}
+  .sparkline-maint {{ stroke: #f59e0b; stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }}
+  .sparkline-fill-live {{ fill: url(#sparkline-gradient-live); opacity: 0.2; }}
+  .sparkline-fill-down {{ fill: url(#sparkline-gradient-down); opacity: 0.2; }}
+  .sparkline-fill-maint {{ fill: url(#sparkline-gradient-maint); opacity: 0.2; }}
+  .material-symbols-outlined {{ font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }}
+</style>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col items-center p-6 antialiased">
+  <svg class="hidden">
+    <defs>
+      <linearGradient id="sparkline-gradient-live" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#10b981"></stop>
+        <stop offset="100%" stop-color="#10b981" stop-opacity="0"></stop>
+      </linearGradient>
+      <linearGradient id="sparkline-gradient-down" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#e11d48"></stop>
+        <stop offset="100%" stop-color="#e11d48" stop-opacity="0"></stop>
+      </linearGradient>
+      <linearGradient id="sparkline-gradient-maint" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#f59e0b"></stop>
+        <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"></stop>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="w-full max-w-[760px] flex flex-col gap-6">
+    <header class="text-center mt-4">
+      <h1 class="text-2xl font-bold tracking-tight text-on-surface">{escape(STATUS_TITLE)}</h1>
+      <p class="text-sm text-on-surface-variant mt-1">Live service availability & incident reports</p>
+    </header>
+
+    <!-- Banner -->
+    <div class="{banner_bg} border {banner_border} rounded-lg p-4 flex items-center gap-3">
+      <span class="material-symbols-outlined {banner_text} text-2xl">{banner_icon}</span>
+      <span class="text-base font-semibold {banner_text}">{data['message']}</span>
     </div>
-    <div class="banner">
-      <span>{banner_icon}</span>
-      <span>{data['message']}</span>
-    </div>
-    <div class="section-title">Services (30-Day History)</div>
-    <div class="services-list">
-      {rows_html}
-    </div>
-    <div class="section-title">Past Incidents</div>
-    <div class="incidents-list">
-      {inc_html}
-    </div>
-    <div class="footer">
-      <span>Powered by caddy-mon</span> ·
-      <span>Updated {datetime.now(TZ).strftime('%H:%M:%S')}</span> ·
-      <a href="/status/feed.xml">📡 RSS Feed</a>
-    </div>
+
+    <!-- Services Section -->
+    <section class="flex flex-col gap-3">
+      <h2 class="text-sm font-bold uppercase tracking-wider text-outline font-mono">Services (30-Day History)</h2>
+      <div class="bg-[#1e293b] rounded-lg border border-white/10 overflow-hidden">
+        {rows_html}
+      </div>
+    </section>
+
+    <!-- Past Incidents -->
+    <section class="flex flex-col gap-3 mt-2">
+      <h2 class="text-sm font-bold uppercase tracking-wider text-outline font-mono">Past Incidents (7 Days)</h2>
+      <div class="bg-[#1e293b] rounded-lg border border-white/10 p-4">
+        {inc_html}
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="text-center text-xs text-on-surface-variant flex justify-center items-center gap-3 mt-4">
+      <span>Powered by caddy-mon</span>
+      <span>•</span>
+      <span>Updated {datetime.now(TZ).strftime('%H:%M:%S')}</span>
+      <span>•</span>
+      <a class="text-primary hover:underline flex items-center gap-1" href="/status/feed.xml">
+        <span class="material-symbols-outlined text-[14px]">rss_feed</span> RSS Feed
+      </a>
+    </footer>
   </div>
+
   <script>setTimeout(() => location.reload(), 30000);</script>
 </body></html>"""
     return HTMLResponse(html)
