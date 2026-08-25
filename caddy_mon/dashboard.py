@@ -162,33 +162,39 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
     maint_btn_text = "End Maint" if is_maint else "Maint"
 
     return f"""
-      <article class="bg-[#1e293b] rounded-lg border border-white/10 p-4 flex flex-col gap-3 relative overflow-hidden {glow_class}" id="card-{escape(primary)}" data-host="{escape(primary)}">
+      <article class="bg-[#1e293b] rounded-lg border border-white/10 p-4 flex flex-col gap-2.5 relative overflow-hidden {glow_class}" id="card-{escape(primary)}" data-host="{escape(primary)}">
         <div class="absolute left-0 top-0 bottom-0 w-1 {border_class}"></div>
-        <div class="flex justify-between items-start gap-2">
-          <div class="flex flex-col min-w-0 flex-1">
-            <h3 class="text-base font-mono font-semibold text-on-surface truncate pr-2" title="{escape(primary)}">{escape(primary)}</h3>
-            {aliases_html}
-            <div class="flex items-center gap-2 mt-1">
-              <span class="{status_text_color} font-bold text-[11px] tracking-wider uppercase font-mono">{status_label}</span>
-              <span class="text-outline-variant">•</span>
-              <span class="{status_text_color} text-xs font-mono">{s.get('latency_ms', 0.0)}ms</span>
+        
+        <!-- Top Full-Width Hostname Header -->
+        <div class="flex flex-col w-full">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-base font-mono font-bold text-on-surface break-all">{escape(primary)}</h3>
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button onclick="runProbe('{escape(primary)}')" class="bg-transparent border border-white/20 hover:border-white/40 text-on-surface-variant hover:text-on-surface text-[10px] uppercase font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer" title="Test upstream now">
+                <span class="material-symbols-outlined text-[13px]">bolt</span> Test
+              </button>
+              <button onclick="toggleMaint('{escape(primary)}', {str(not is_maint).lower()})" class="bg-transparent border border-white/20 hover:border-white/40 text-on-surface-variant hover:text-on-surface text-[10px] uppercase font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer" title="Toggle maintenance mode">
+                <span class="material-symbols-outlined text-[13px]">build</span> {maint_btn_text}
+              </button>
             </div>
           </div>
-          <div class="flex flex-col items-end gap-2">
-            <div class="flex items-center gap-2">
-              {uptime_html}
-              <div class="flex gap-1">
-                <button onclick="runProbe('{escape(primary)}')" class="bg-transparent border border-white/20 hover:border-white/40 text-on-surface-variant hover:text-on-surface text-[10px] uppercase font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer" title="Test upstream now">
-                  <span class="material-symbols-outlined text-[14px]">bolt</span> Test
-                </button>
-                <button onclick="toggleMaint('{escape(primary)}', {str(not is_maint).lower()})" class="bg-transparent border border-white/20 hover:border-white/40 text-on-surface-variant hover:text-on-surface text-[10px] uppercase font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer" title="Toggle maintenance mode">
-                  <span class="material-symbols-outlined text-[14px]">build</span> {maint_btn_text}
-                </button>
-              </div>
-            </div>
+          {aliases_html}
+        </div>
+
+        <!-- Status Metrics & Sparkline Sub-row -->
+        <div class="flex items-center justify-between gap-2 pt-1 border-t border-white/5">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="{status_text_color} font-bold text-[11px] tracking-wider uppercase font-mono">{status_label}</span>
+            <span class="text-outline-variant">•</span>
+            <span class="{status_text_color} text-xs font-mono">{s.get('latency_ms', 0.0)}ms</span>
+            <span class="text-outline-variant">•</span>
+            {uptime_html}
+          </div>
+          <div class="flex-shrink-0">
             {spark_svg}
           </div>
         </div>
+
         <div class="flex flex-col gap-1.5 mt-auto pt-2 border-t border-white/5">
           {up_html}
           {log_html}
