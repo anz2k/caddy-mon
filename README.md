@@ -74,6 +74,26 @@ the global options block needs:
 from the `caddy-mon` container. Port 2019 is NOT published to the host, so
 it stays reachable only to containers on the `caddy_default` network.)
 
+## Testing
+
+```bash
+# install dev deps (pytest, cryptography) in a venv
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]"
+
+# unit tests (no network needed)
+pytest tests/test_caddy_source.py tests/test_tls_source.py -v
+
+# live Caddy config tests (needs Caddy admin API reachable; auto-skip otherwise)
+pytest tests/test_caddy_config.py -v
+```
+
+Unit tests cover route parsing (`_parse_routes`), health-metric parsing
+(`_parse_healthy`), TLS cert parsing (`cert_status`), and TLD grouping. The
+`test_caddy_config.py` integration tests probe the live Caddy admin API and
+every upstream dial, catching Caddyfile mistakes (wrong IPs, missing servers)
+before they become outages.
+
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how caddy-mon works internally

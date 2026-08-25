@@ -97,8 +97,6 @@ admin + reverse_proxy_healthy + Go runtime). So:
 
 ## Known limitations / backlog
 
-- **No automated tests yet:** critical logic (`_parse_routes`, `_parse_healthy`,
-  `cert_status`) is not covered by `pytest`. Tests are on the backlog.
 - **No authentication:** the UI and JSON APIs are open on port 8080. This is
   acceptable for a LAN-only deployment behind Caddy (e.g. `caddymon.lope.lan`),
   but if exposed more widely, add Caddy basic-auth or forward-auth.
@@ -120,9 +118,11 @@ FastAPI entry point that wires the modules together.
 | `caddy_mon/config.py` | `CADDY_API`, `POLL_INTERVAL`, `PROBE_TIMEOUT`, `LOG_PATH`, `TZ` |
 | `caddy_mon/caddy_source.py` | Caddy admin API: `_get_json`, `_parse_routes`, `_parse_healthy`, `_probe`, `refresh()`, `_state`, TLD grouping |
 | `caddy_mon/log_source.py` | Access-log ingestion: `ingest_logs()`, `host_log_stats()`, `log_stats()`, in-memory cache |
+| `caddy_mon/tls_source.py` | TLS cert parsing: `cert_status()`, in-memory cache |
 | `caddy_mon/dashboard.py` | Dashboard HTML page + `/api/state` |
 | `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
+| `tests/` | Unit tests (`test_caddy_source.py`, `test_tls_source.py`) + live Caddy config integration tests (`test_caddy_config.py`) |
 
 Add a new page by creating a module with a render function + API, then
 registering both in `app.py`.
