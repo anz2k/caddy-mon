@@ -97,10 +97,6 @@ admin + reverse_proxy_healthy + Go runtime). So:
 
 ## Known limitations / backlog
 
-- **Sequential probes:** `refresh()` probes upstreams one-by-one in a sync loop.
-  With many dead upstreams this can take longer than `POLL_INTERVAL`, though
-  the `_state` cache (10s) means it does not block every request. A future
-  version could use `httpx.AsyncClient` + `asyncio.gather()` for parallelism.
 - **No automated tests yet:** critical logic (`_parse_routes`, `_parse_healthy`,
   `cert_status`) is not covered by `pytest`. Tests are on the backlog.
 - **No authentication:** the UI and JSON APIs are open on port 8080. This is
@@ -109,6 +105,9 @@ admin + reverse_proxy_healthy + Go runtime). So:
 - **HTML built with f-strings:** all external input (log `uri`/`host`, cert
   hosts, route labels) is passed through `html.escape()` to prevent XSS, but a
   template engine (Jinja2) would give auto-escaping by default.
+- **Probes are parallel (async):** `refresh()` probes all upstreams of a site
+  concurrently via `asyncio.gather()`, so a refresh is bounded by the slowest
+  single probe, not the sum. (Earlier versions probed sequentially.)
 
 ## Code layout
 
