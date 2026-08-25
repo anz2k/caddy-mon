@@ -100,7 +100,7 @@ def dashboard(request: Request):
 </style></head>
 <body>
   <h1>Caddy Mon</h1>
-  <div class="sub">Caddy reverse-proxy live status · {total} sites · {alive} alive · updated {datetime.now(TZ).strftime('%H:%M:%S')} · <a href="/topology" style="color:#60a5fa">topology</a> · <a href="/logs" style="color:#60a5fa">logs</a></div>
+  <div class="sub">Caddy reverse-proxy live status · {total} sites · {alive} alive · updated {datetime.now(TZ).strftime('%H:%M:%S')} · <a href="/topology" style="color:#60a5fa">topology</a> · <a href="/logs" style="color:#60a5fa">logs</a> · <a href="/tls" style="color:#60a5fa">tls</a></div>
   {err_html}
   <div class="groups">{groups_html}</div>
   <script>

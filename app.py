@@ -11,6 +11,7 @@ from caddy_mon.caddy_source import refresh
 from caddy_mon.dashboard import dashboard, api_state
 from caddy_mon.topology import topology, api_topology
 from caddy_mon.logs_page import logs_page, api_logs
+from caddy_mon.tls_page import tls_page, api_tls
 
 app = FastAPI()
 
@@ -43,6 +44,16 @@ def logs_route(request: Request, window: int = 3600):
 @app.get("/api/logs")
 def api_logs_route(window: int = 3600):
     return api_logs(window=window)
+
+
+@app.get("/tls", response_class=HTMLResponse)
+def tls_route(request: Request):
+    return tls_page(request)
+
+
+@app.get("/api/tls")
+def api_tls_route():
+    return api_tls()
 
 
 if __name__ == "__main__":
