@@ -62,8 +62,8 @@ def _render_card(s):
       </div>"""
 
 
-def dashboard(request: Request):
-    refresh()
+async def dashboard(request: Request):
+    await refresh()
     sites = _state["sites"]
     errors = _state["errors"]
     grouped = _group_hosts_by_tld(sites)
@@ -120,8 +120,8 @@ def dashboard(request: Request):
     return HTMLResponse(html)
 
 
-def api_state():
-    refresh()
+async def api_state():
+    await refresh()
     return {
         "last_update": _state["last_update"],
         "sites": _state["sites"],

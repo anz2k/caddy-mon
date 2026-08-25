@@ -52,9 +52,9 @@ def api_topology():
     return {"nodes": nodes, "edges": edges}
 
 
-def topology(request: Request):
+async def topology(request: Request):
     from .caddy_source import refresh
-    refresh()
+    await refresh()
     data = api_topology()
     nodes = data["nodes"]
     edges = data["edges"]

@@ -17,42 +17,42 @@ app = FastAPI()
 
 
 @app.get("/")
-def index(request: Request):
-    return dashboard(request)
+async def index(request: Request):
+    return await dashboard(request)
 
 
 @app.get("/api/state")
-def api_state_route():
-    return api_state()
+async def api_state_route():
+    return await api_state()
 
 
 @app.get("/topology", response_class=HTMLResponse)
-def topology_route(request: Request):
-    return topology(request)
+async def topology_route(request: Request):
+    return await topology(request)
 
 
 @app.get("/api/topology")
-def api_topology_route():
+async def api_topology_route():
     return api_topology()
 
 
 @app.get("/logs", response_class=HTMLResponse)
-def logs_route(request: Request, window: int = 3600):
+async def logs_route(request: Request, window: int = 3600):
     return logs_page(request, window=window)
 
 
 @app.get("/api/logs")
-def api_logs_route(window: int = 3600):
+async def api_logs_route(window: int = 3600):
     return api_logs(window=window)
 
 
 @app.get("/tls", response_class=HTMLResponse)
-def tls_route(request: Request):
+async def tls_route(request: Request):
     return tls_page(request)
 
 
 @app.get("/api/tls")
-def api_tls_route():
+async def api_tls_route():
     return api_tls()
 
 

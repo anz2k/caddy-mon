@@ -1,6 +1,7 @@
 """Caddy admin-API access: fetching routes, parsing, probing, refreshing."""
 
 import time
+import asyncio
 import httpx
 from .config import CADDY_API, POLL_INTERVAL, PROBE_TIMEOUT
 
@@ -115,15 +116,15 @@ def _parse_healthy(metrics_text: str):
     return result
 
 
-def _probe(upstream: str):
+async def _probe_async(upstream: str):
     """Quick GET probe. Returns (ok, status, ms, error)."""
     if upstream.startswith("https://") or upstream.startswith("http://"):
         return (False, 0, 0.0, "scheme_not_supported")
     url = f"http://{upstream}"
     try:
         start = time.monotonic()
-        with httpx.Client(timeout=PROBE_TIMEOUT) as c:
-            r = c.get(url, headers={"User-Agent": "caddy-mon-probe/0.1"})
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT) as c:
+            r = await c.get(url, headers={"User-Agent": "caddy-mon-probe/0.1"})
         elapsed = (time.monotonic() - start) * 1000.0
         return (True, r.status_code, round(elapsed, 1), None)
     except Exception as e:
@@ -146,7 +147,7 @@ def _site_tls(hosts):
     return best
 
 
-def refresh():
+async def refresh():
     """Poll Caddy and rebuild _state["sites"]."""
     from .log_source import ingest_logs, host_log_stats  # local import to avoid cycle
 
@@ -178,17 +179,25 @@ def refresh():
 
     metrics_text = ""
     try:
-        with httpx.Client(timeout=5.0) as c:
-            metrics_text = c.get(f"{CADDY_API}/metrics").text
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            metrics_text = (await c.get(f"{CADDY_API}/metrics")).text
     except Exception as e:
         errors.append(f"metrics: {e}")
     healthy = _parse_healthy(metrics_text)
 
     sites = []
     for s in parsed:
+        # Probe all upstreams for this site in parallel.
+        results = await asyncio.gather(
+            *(_probe_async(up) for up in s["upstreams"]),
+            return_exceptions=True,
+        )
         up_probes = []
-        for up in s["upstreams"]:
-            ok, status, ms, err = _probe(up)
+        for up, res in zip(s["upstreams"], results):
+            if isinstance(res, Exception):
+                ok, status, ms, err = False, 0, 0.0, str(res)[:80]
+            else:
+                ok, status, ms, err = res
             up_probes.append({
                 "upstream": up,
                 "caddy_healthy": healthy.get(up),
