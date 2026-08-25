@@ -130,6 +130,22 @@ def _probe(upstream: str):
         return (False, 0, 0.0, str(e)[:80])
 
 
+def _site_tls(hosts):
+    """Find the TLS cert covering any of `hosts`, return {days_left, warn} or None.
+
+    Matches against cert SANs. The first matching cert (soonest-expiring)
+    wins so the most urgent expiry shows on the dashboard card.
+    """
+    from .tls_source import cert_status
+    best = None
+    for entry in cert_status():
+        cert_hosts = set(entry.get("hosts") or [])
+        if cert_hosts & set(hosts):
+            if best is None or entry["days_left"] < best["days_left"]:
+                best = {"days_left": entry["days_left"], "warn": entry["warn"]}
+    return best
+
+
 def refresh():
     """Poll Caddy and rebuild _state["sites"]."""
     from .log_source import ingest_logs, host_log_stats  # local import to avoid cycle
@@ -196,6 +212,7 @@ def refresh():
         worst_ms = max((u["ms"] for u in up_probes if u["probe_ok"]), default=0.0)
         group = _tld_group(s["hosts"][0])
         log = host_log_stats(s["hosts"][0], window=3600)
+        tls = _site_tls(s["hosts"])
         sites.append({
             "hosts": s["hosts"],
             "primary_host": s["hosts"][0],
@@ -205,6 +222,7 @@ def refresh():
             "alive": alive,
             "latency_ms": worst_ms,
             "log": log,
+            "tls": tls,
         })
 
     _state["sites"] = sites

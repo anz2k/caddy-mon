@@ -44,12 +44,20 @@ def _render_card(s):
                     f'📊 {log["requests"]} req · {log["errors_5xx"]} 5xx ({log["error_pct"]}%)</div>')
     else:
         log_html = '<div class="logstat" style="color:#6b7280">📊 no traffic (1h)</div>'
+    tls = s.get("tls")
+    if tls:
+        tls_color = "#f87171" if tls["warn"] else "#6b7280"
+        tls_label = f"⚠ {tls['days_left']}d" if tls["warn"] else f"{tls['days_left']}d"
+        tls_html = f'<div class="tlsstat" style="color:{tls_color}">🔒 {tls_label}</div>'
+    else:
+        tls_html = '<div class="tlsstat" style="color:#6b7280">🔒 n/a</div>'
     return f"""
       <div class="card" style="border-left:6px solid {color}">
         {hosts_html}
         <div class="status" style="color:{color}">{('ALIVE' if s['alive'] else 'DEAD')} · {s['latency_ms']}ms</div>
         {up_html}
         {log_html}
+        {tls_html}
       </div>"""
 
 
@@ -92,6 +100,7 @@ def dashboard(request: Request):
   .aliases-label {{ color:#6b7280; font-size:11px; font-weight:600; }}
   .alias {{ color:#9ca3af; font-size:11px; padding-left:8px; word-break:break-all; }}
   .logstat {{ font-size:11px; margin-top:8px; color:#6b7280; }}
+  .tlsstat {{ font-size:11px; margin-top:4px; color:#6b7280; }}
   .status {{ font-weight:700; font-size:14px; margin-bottom:8px; }}
   .up {{ display:flex; align-items:center; gap:8px; font-size:12px; margin-top:6px; flex-wrap:wrap; }}
   .badge {{ color:#fff; padding:2px 6px; border-radius:5px; font-size:11px; white-space:nowrap; }}
