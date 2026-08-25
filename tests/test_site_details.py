@@ -1,11 +1,22 @@
 """Unit tests for Phase 4: Site deep-dive details, extended history, recent host logs, and ACME cert scanning."""
 
-import time
-from unittest import mock
-import tempfile
 import os
+import time
+import tempfile
+from unittest import mock
+import pytest
 
 from caddy_mon import db, log_source, tls_source
+
+
+@pytest.fixture(autouse=True)
+def temp_db():
+    """Run each test with an isolated temporary SQLite database."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_file = os.path.join(tmpdir, "test_caddy_mon.db")
+        with mock.patch.object(db, "DB_PATH", db_file):
+            db.init_db()
+            yield db_file
 
 
 def test_get_host_extended_history_and_incidents():
