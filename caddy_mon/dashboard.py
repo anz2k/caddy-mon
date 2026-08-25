@@ -162,41 +162,44 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
     maint_btn_text = "End Maint" if is_maint else "Maint"
 
     return f"""
-      <article class="bg-[#1e293b] rounded-lg border border-white/10 p-4 flex flex-col gap-2.5 relative overflow-hidden {glow_class}" id="card-{escape(primary)}" data-host="{escape(primary)}">
+      <article class="bg-[#1e293b] rounded-lg border border-white/10 p-4 flex flex-col gap-3 relative overflow-hidden {glow_class}" id="card-{escape(primary)}" data-host="{escape(primary)}">
         <div class="absolute left-0 top-0 bottom-0 w-1 {border_class}"></div>
         
-        <!-- Top Full-Width Hostname Header -->
+        <!-- 1. Top Full-Width Hostname Header -->
         <div class="flex flex-col w-full">
           <h3 class="text-base font-mono font-bold text-on-surface break-all">{escape(primary)}</h3>
           {aliases_html}
         </div>
 
-        <!-- Status Metrics, Action Buttons & Sparkline Sub-row -->
-        <div class="flex items-center justify-between gap-2 pt-1 border-t border-white/5">
-          <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+        <!-- 2. Status Metrics & Sparkline Sub-row -->
+        <div class="flex items-center justify-between gap-2 py-1.5 border-y border-white/5">
+          <div class="flex items-center gap-2 flex-wrap">
             <span class="{status_text_color} font-bold text-[11px] tracking-wider uppercase font-mono">{status_label}</span>
             <span class="text-outline-variant">•</span>
-            <span class="{status_text_color} text-xs font-mono">{s.get('latency_ms', 0.0)}ms</span>
+            <span class="{status_text_color} text-xs font-mono font-semibold">{s.get('latency_ms', 0.0)}ms</span>
             <span class="text-outline-variant">•</span>
             {uptime_html}
           </div>
-          <div class="flex items-center gap-2 flex-shrink-0">
-            <div class="flex items-center gap-1">
-              <button onclick="runProbe('{escape(primary)}')" class="bg-transparent border border-white/20 hover:border-white/40 text-on-surface-variant hover:text-on-surface text-[10px] uppercase font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer" title="Test upstream now">
-                <span class="material-symbols-outlined text-[13px]">bolt</span> Test
-              </button>
-              <button onclick="toggleMaint('{escape(primary)}', {str(not is_maint).lower()})" class="bg-transparent border border-white/20 hover:border-white/40 text-on-surface-variant hover:text-on-surface text-[10px] uppercase font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer" title="Toggle maintenance mode">
-                <span class="material-symbols-outlined text-[13px]">build</span> {maint_btn_text}
-              </button>
-            </div>
+          <div class="flex-shrink-0">
             {spark_svg}
           </div>
         </div>
 
-        <div class="flex flex-col gap-1.5 mt-auto pt-2 border-t border-white/5">
+        <!-- 3. Upstream & Log & TLS Details -->
+        <div class="flex flex-col gap-1.5 my-1">
           {up_html}
           {log_html}
           {tls_html}
+        </div>
+
+        <!-- 4. Card Bottom Actions Toolbar -->
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-white/5 mt-auto">
+          <button onclick="runProbe('{escape(primary)}')" class="bg-surface-container hover:bg-slate-700 text-on-surface border border-white/10 text-[11px] font-semibold px-2.5 py-1 rounded flex items-center gap-1.5 transition-colors cursor-pointer" title="Test upstream now">
+            <span class="material-symbols-outlined text-[14px] text-primary">bolt</span> Test
+          </button>
+          <button onclick="toggleMaint('{escape(primary)}', {str(not is_maint).lower()})" class="bg-surface-container hover:bg-slate-700 text-on-surface border border-white/10 text-[11px] font-semibold px-2.5 py-1 rounded flex items-center gap-1.5 transition-colors cursor-pointer" title="Toggle maintenance mode">
+            <span class="material-symbols-outlined text-[14px] text-status-maint">build</span> {maint_btn_text}
+          </button>
         </div>
       </article>"""
 
