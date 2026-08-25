@@ -103,7 +103,25 @@ multiple servers (e.g. for different listen ports or site groups).
 **Why:** A single-server assumption silently drops sites defined on `srv1`,
 `srv2`, etc.
 
+## Real-Time SSE streaming
+
+**What it adds:** Zero-flicker live updates via Server-Sent Events (`/api/events`). The browser no longer performs full-page reloads; status badges, latencies, and timestamps update smoothly in place.
+
+**How it works:** `caddy_mon.sse.EventBroadcaster` manages subscriber queues. Whenever background polling completes or state changes, a `state_update` event is dispatched to all connected browsers.
+
+## History, 24h Uptime & Sparklines
+
+**What it adds:** An embedded SQLite time-series history that tracks rolling 24-hour uptime percentage (e.g. `99.8% (24h)`) and renders mini SVG latency sparklines directly on each dashboard site card.
+
+**How it works:** `caddy_mon.db` records health snapshots into `site_snapshots`. `get_site_uptime_24h()` computes the percentage of healthy checks, and `get_site_sparkline()` generates a 12-point latency trendline. Snapshots older than 7 days are automatically pruned.
+
+## Incident alerting (Telegram & Webhooks)
+
+**What it adds:** Automated notifications when a site transitions from `ALIVE` to `DEAD` (down alert with upstream error diagnostics) and when it recovers (`DEAD` to `ALIVE`).
+
+**How it works:** `caddy_mon.alerts` monitors state transitions against the `alert_state` SQLite table. Cooldown throttling (`ALERT_COOLDOWN_MINUTES`) prevents alert floods during flapping, and incidents are archived in `incident_events`.
+
 ## Planned / future (not yet implemented)
 
-See the development plan (private, not in this repo) for the backlog:
-Telegram alerts.
+- Interactive control plane (Caddy route modification & maintenance mode toggling).
+- SSO/OIDC authentication & Public Status Page mode.

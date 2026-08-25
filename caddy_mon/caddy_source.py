@@ -3,14 +3,27 @@
 import time
 import asyncio
 import httpx
-from .config import CADDY_API, POLL_INTERVAL, PROBE_TIMEOUT
+from typing import Optional
 
-# In-memory cache (no database needed).
+from .config import CADDY_API, POLL_INTERVAL, PROBE_TIMEOUT
+from .db import (
+    init_db,
+    record_snapshot,
+    get_site_uptime_24h,
+    get_site_sparkline,
+    prune_old_history,
+)
+from .alerts import process_site_alerts
+from .sse import broadcaster
+
+# In-memory cache
 _state = {
     "sites": [],
     "errors": [],
     "last_update": 0.0,
 }
+
+_refresh_lock = asyncio.Lock()
 
 
 async def _get_json(path: str):
@@ -147,96 +160,139 @@ def _site_tls(hosts):
     return best
 
 
-async def refresh():
-    """Poll Caddy and rebuild _state["sites"]."""
+async def refresh(force: bool = False):
+    """Poll Caddy, update SQLite history, trigger alerts, broadcast SSE updates."""
     from .log_source import ingest_logs, host_log_stats  # local import to avoid cycle
 
     now = time.time()
-    if now - _state["last_update"] < POLL_INTERVAL and _state["sites"]:
+    if not force and (now - _state["last_update"] < POLL_INTERVAL) and _state["sites"]:
         return
 
-    ingest_logs()
+    async with _refresh_lock:
+        # Double check cache inside lock
+        if not force and (time.time() - _state["last_update"] < POLL_INTERVAL) and _state["sites"]:
+            return
 
-    errors = []
-    servers_cfg = await _get_json("/config/apps/http/servers")
-    if "_error" in servers_cfg:
-        errors.append(f"Caddy admin API unreachable: {servers_cfg['_error']}")
-        _state["errors"] = errors
-        return
+        ingest_logs()
 
-    all_routes = []
-    if isinstance(servers_cfg, dict):
-        for srv_name, srv_cfg in servers_cfg.items():
-            if not isinstance(srv_cfg, dict):
-                continue
-            srv_routes = srv_cfg.get("routes", [])
-            if isinstance(srv_routes, list):
-                all_routes.extend(srv_routes)
-    elif isinstance(servers_cfg, list):
-        all_routes = servers_cfg
+        errors = []
+        servers_cfg = await _get_json("/config/apps/http/servers")
+        if "_error" in servers_cfg:
+            errors.append(f"Caddy admin API unreachable: {servers_cfg['_error']}")
+            _state["errors"] = errors
+            return
 
-    parsed = _parse_routes(all_routes) if all_routes else []
+        all_routes = []
+        if isinstance(servers_cfg, dict):
+            for srv_name, srv_cfg in servers_cfg.items():
+                if not isinstance(srv_cfg, dict):
+                    continue
+                srv_routes = srv_cfg.get("routes", [])
+                if isinstance(srv_routes, list):
+                    all_routes.extend(srv_routes)
+        elif isinstance(servers_cfg, list):
+            all_routes = servers_cfg
 
-    metrics_text = ""
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as c:
-            metrics_text = (await c.get(f"{CADDY_API}/metrics")).text
-    except Exception as e:
-        errors.append(f"metrics: {e}")
-    healthy = _parse_healthy(metrics_text)
+        parsed = _parse_routes(all_routes) if all_routes else []
 
-    sites = []
-    for s in parsed:
-        # Probe all upstreams for this site in parallel.
-        results = await asyncio.gather(
-            *(_probe_async(up) for up in s["upstreams"]),
-            return_exceptions=True,
-        )
-        up_probes = []
-        for up, res in zip(s["upstreams"], results):
-            if isinstance(res, Exception):
-                ok, status, ms, err = False, 0, 0.0, str(res)[:80]
-            else:
-                ok, status, ms, err = res
-            up_probes.append({
-                "upstream": up,
-                "caddy_healthy": healthy.get(up),
-                "probe_ok": ok,
-                "status": status,
-                "ms": ms,
-                "error": err,
+        metrics_text = ""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                metrics_text = (await c.get(f"{CADDY_API}/metrics")).text
+        except Exception as e:
+            errors.append(f"metrics: {e}")
+        healthy = _parse_healthy(metrics_text)
+
+        # Global parallel probing: probe all unique upstreams across all sites at once
+        unique_upstreams = list({up for s in parsed for up in s["upstreams"]})
+        probe_results = {}
+        if unique_upstreams:
+            raw_results = await asyncio.gather(
+                *(_probe_async(up) for up in unique_upstreams),
+                return_exceptions=True,
+            )
+            for up, res in zip(unique_upstreams, raw_results):
+                if isinstance(res, Exception):
+                    probe_results[up] = (False, 0, 0.0, str(res)[:80])
+                else:
+                    probe_results[up] = res
+
+        sites = []
+        for s in parsed:
+            up_probes = []
+            for up in s["upstreams"]:
+                ok, status, ms, err = probe_results.get(
+                    up, (False, 0, 0.0, "not_probed")
+                )
+                up_probes.append({
+                    "upstream": up,
+                    "caddy_healthy": healthy.get(up),
+                    "probe_ok": ok,
+                    "status": status,
+                    "ms": ms,
+                    "error": err,
+                })
+
+            def upstream_ok(u):
+                h = u["caddy_healthy"]
+                if h is False:
+                    return False
+                if h is True:
+                    if (not u["probe_ok"]) and "refused" in (u["error"] or "").lower():
+                        return False
+                    return True
+                return u["probe_ok"] and u["status"] < 500
+
+            alive = all(upstream_ok(u) for u in up_probes)
+            worst_ms = max((u["ms"] for u in up_probes if u["probe_ok"]), default=0.0)
+            group = _tld_group(s["hosts"][0])
+            log = host_log_stats(s["hosts"][0], window=3600)
+            tls = _site_tls(s["hosts"])
+            primary = s["hosts"][0]
+            uptime_24h = get_site_uptime_24h(primary, now=now)
+            sparkline = get_site_sparkline(primary, now=now)
+
+            sites.append({
+                "hosts": s["hosts"],
+                "primary_host": primary,
+                "group": group,
+                "paths": s["paths"],
+                "upstreams": up_probes,
+                "alive": alive,
+                "latency_ms": worst_ms,
+                "log": log,
+                "tls": tls,
+                "uptime_24h": uptime_24h,
+                "sparkline": sparkline,
             })
 
-        def upstream_ok(u):
-            h = u["caddy_healthy"]
-            if h is False:
-                return False
-            if h is True:
-                if (not u["probe_ok"]) and "refused" in (u["error"] or "").lower():
-                    return False
-                return True
-            return u["probe_ok"] and u["status"] < 500
+        _state["sites"] = sites
+        _state["errors"] = errors
+        _state["last_update"] = now
 
-        alive = all(upstream_ok(u) for u in up_probes)
-        worst_ms = max((u["ms"] for u in up_probes if u["probe_ok"]), default=0.0)
-        group = _tld_group(s["hosts"][0])
-        log = host_log_stats(s["hosts"][0], window=3600)
-        tls = _site_tls(s["hosts"])
-        sites.append({
-            "hosts": s["hosts"],
-            "primary_host": s["hosts"][0],
-            "group": group,
-            "paths": s["paths"],
-            "upstreams": up_probes,
-            "alive": alive,
-            "latency_ms": worst_ms,
-            "log": log,
-            "tls": tls,
-        })
+        # Persist to SQLite, check alerts, broadcast to active SSE subscribers
+        record_snapshot(sites, now=now)
+        prune_old_history(now=now)
+        await process_site_alerts(sites, now=now)
+        await broadcaster.broadcast(
+            "state_update",
+            {
+                "last_update": now,
+                "sites": sites,
+                "errors": errors,
+            },
+        )
 
-    _state["sites"] = sites
-    _state["errors"] = errors
-    _state["last_update"] = now
+
+async def background_poll_loop():
+    """Continuous background worker ensuring 24/7 metrics history and alerting."""
+    init_db()
+    while True:
+        try:
+            await refresh(force=True)
+        except Exception:
+            pass
+        await asyncio.sleep(POLL_INTERVAL)
 
 
 def _tld_group(host: str) -> str:

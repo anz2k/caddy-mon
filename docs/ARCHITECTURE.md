@@ -43,8 +43,11 @@ ports or site groups). All are merged into the dashboard/topology view.
 
 | Route | Purpose |
 |-------|---------|
-| `GET /` | HTML dashboard (cards grouped by TLD, auto-refresh 12s) |
+| `GET /` | HTML dashboard (cards with 24h uptime + sparklines, live SSE stream) |
 | `GET /api/state` | JSON: `{last_update, sites[], errors[]}` |
+| `GET /api/events` | Server-Sent Events (SSE) live streaming updates |
+| `GET /api/history/{host}` | JSON: `{host, uptime_24h, sparkline[]}` |
+| `GET /api/incidents` | JSON: `{incidents[]}` (recent DOWN/RECOVERED events) |
 | `GET /topology` | HTML SVG route map (host → path → Caddy proxy → upstream) |
 | `GET /api/topology` | JSON: `{nodes[], edges[]}` for the route map |
 | `GET /logs` | HTML log analytics (per-host 5xx/error%, recent 5xx) |
@@ -52,77 +55,38 @@ ports or site groups). All are merged into the dashboard/topology view.
 | `GET /tls` | HTML TLS certificate expiry table |
 | `GET /api/tls` | JSON: `{entries[], warn_days}` |
 
-## Log analytics internals
+## History & persistence internals
 
-- Source: Caddy JSON access log at `/caddy-logs/access.log` (mounted read-only
-  from the host's Caddy log directory).
-- `_ingest_logs()` tracks file position + inode so a log rotation (new file,
-  new inode) restarts from offset 0. It uses `readline()` + `tell()` (not
-  `for line in f` + `tell()`, which raises OSError on Python).
-- `admin.api` logger entries (caddy-mon's own polling) are filtered out.
-- Entries are kept in an in-memory ring buffer capped at ~5000 to bound memory.
+- Source: embedded SQLite database at `${DB_PATH}` (`/data/caddy_mon.db` by default, mounted via Docker volume).
+- `site_snapshots` records periodic health, alive status, and latency.
+- `get_site_uptime_24h(host)` calculates rolling 24h uptime percentage.
+- `get_site_sparkline(host)` computes 12-point bucketed average latency for mini SVG rendering.
+- `prune_old_history(days=7)` automatically purges snapshots older than retention limit.
 
-## TLS monitoring internals
+## Alerting internals
 
-- Source: certificate files mounted read-only at `/caddy-certs` (from the
-  host's Caddy cert directory; configured in `docker-compose.yml`).
-- `cert_status()` parses each `.crt` with the `cryptography` library, extracts
-  the SAN list and `not_valid_after` date, and computes days left.
-- `_site_tls(hosts)` matches a site's hostnames against cert SANs and returns
-  the soonest-expiring match, so the dashboard card shows the most urgent
-  countdown.
-- Sites covered by ACME-managed certs (no mounted file) show `n/a` on the card.
-- `WARN_DAYS = 30`: certs with fewer days left are flagged red.
-
-## Why no Prometheus/Grafana
-
-Caddy `/metrics` does **not** expose `caddy_http_*` traffic counters (only
-admin + reverse_proxy_healthy + Go runtime). So:
-- **status** comes from Caddy's already-computed `healthy` metric
-- **latency** comes from a self-made probe (does not depend on Caddy logs)
-- **traffic/5xx** comes from the access log (parsed in-process, no TSDB)
-- no TSDB needed — the dashboard is a snapshot, not a time series
-
-## Deployment
-
-- `caddy-mon` runs as a Docker container on the **same network** as `caddy-proxy`
-  (`caddy_default`), so the DNS name `caddy-proxy` resolves.
-- The Caddyfile must expose the admin API on all interfaces (`admin :2019`)
-  inside the container; port 2019 is NOT published to the host.
-- The Caddy access-log directory is mounted read-only at `/caddy-logs` for
-  log analytics.
-- `CADDY_API` env var overrides the admin API URL (default `http://caddy-proxy:2019`).
-- The deployment directory is a clone of this repo; `git pull && docker compose
-  up -d --build` applies updates.
-
-## Known limitations / backlog
-
-- **No authentication:** the UI and JSON APIs are open on port 8080. This is
-  acceptable for a LAN-only deployment behind Caddy (e.g. `caddymon.lope.lan`),
-  but if exposed more widely, add Caddy basic-auth or forward-auth.
-- **HTML built with f-strings:** all external input (log `uri`/`host`, cert
-  hosts, route labels) is passed through `html.escape()` to prevent XSS, but a
-  template engine (Jinja2) would give auto-escaping by default.
-- **Probes are parallel (async):** `refresh()` probes all upstreams of a site
-  concurrently via `asyncio.gather()`, so a refresh is bounded by the slowest
-  single probe, not the sum. (Earlier versions probed sequentially.)
+- Telegram Bot and generic Webhooks (Discord/Slack) dispatch alerts on state changes:
+  - `ALIVE -> DEAD`: Site down alert with failing upstream diagnostics.
+  - `DEAD -> ALIVE`: Site recovered alert with downtime duration.
+- Cooldown timer (`ALERT_COOLDOWN_MINUTES`) prevents notification storms during flapping.
+- All events are logged to `incident_events` table in SQLite.
 
 ## Code layout
 
-The app is split into a small `caddy_mon` package; `app.py` is only a thin
-FastAPI entry point that wires the modules together.
+The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI entry point.
 
 | Module | Responsibility |
 |--------|---------------|
-| `app.py` | FastAPI app: registers routes, imports the package modules |
-| `caddy_mon/config.py` | `CADDY_API`, `POLL_INTERVAL`, `PROBE_TIMEOUT`, `LOG_PATH`, `TZ` |
-| `caddy_mon/caddy_source.py` | Caddy admin API: `_get_json`, `_parse_routes`, `_parse_healthy`, `_probe`, `refresh()`, `_state`, TLD grouping |
-| `caddy_mon/log_source.py` | Access-log ingestion: `ingest_logs()`, `host_log_stats()`, `log_stats()`, in-memory cache |
-| `caddy_mon/tls_source.py` | TLS cert parsing: `cert_status()`, in-memory cache |
-| `caddy_mon/dashboard.py` | Dashboard HTML page + `/api/state` |
+| `app.py` | FastAPI app: lifespan background worker, route registration |
+| `caddy_mon/config.py` | Configuration settings (`CADDY_API`, `DB_PATH`, Telegram/Webhook tokens, TZ) |
+| `caddy_mon/db.py` | SQLite database layer: snapshots, 24h uptime, sparklines, incidents, retention |
+| `caddy_mon/alerts.py` | Incident alerting: Telegram bot, Webhooks, transition detection, cooldown |
+| `caddy_mon/sse.py` | Server-Sent Events broadcaster: live client queue management, keepalive |
+| `caddy_mon/caddy_source.py` | Caddy admin API: routes, health metrics, async probes, background loop |
+| `caddy_mon/log_source.py` | Access-log ingestion: `ingest_logs()`, `host_log_stats()`, `log_stats()` |
+| `caddy_mon/tls_source.py` | TLS cert parsing: `cert_status()`, expiry tracking |
+| `caddy_mon/dashboard.py` | Dashboard HTML page with SVG sparklines + `/api/state` |
 | `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
-| `tests/` | Unit tests (`test_caddy_source.py`, `test_tls_source.py`) + live Caddy config integration tests (`test_caddy_config.py`) |
-
-Add a new page by creating a module with a render function + API, then
-registering both in `app.py`.
+| `caddy_mon/tls_page.py` | TLS expiry HTML page + `/api/tls` |
+| `tests/` | Unit tests (`test_caddy_source.py`, `test_tls_source.py`, `test_db.py`, `test_alerts.py`, `test_sse.py`) + live Caddy integration tests |

@@ -7,12 +7,15 @@ latency, and last check time — pulled straight from the Caddy admin API.
 
 ## Features
 
-- **Health dashboard** — live alive/dead + latency per proxied site, auto-refresh every 12s
+- **Live health dashboard** — live alive/dead + latency per proxied site with zero-flicker SSE updates
+- **24h Uptime & Sparklines** — rolling 24h uptime % badge and mini SVG latency trendlines per card
+- **Incident alerting** — automatic Telegram and Webhook alerts when sites go DOWN or RECOVER
 - **Route topology** — SVG map of host → path → Caddy proxy → upstream (at `/topology`), supports path-based routing and multi-upstream
 - **Multi-server Caddy** — reads routes from all Caddy HTTP servers (srv0, srv1, ...), not just srv0
 - **Combined health** — Caddy `healthy` metric + self-probe; connection-refused overrides a stale healthy=1
 - **Log analytics** — per-host request/5xx/error% over a time window (compact line on each dashboard card + full view at `/logs`, JSON at `/api/logs`)
 - **TLS expiry** — certificate expiry monitoring at `/tls` (JSON at `/api/tls`); a compact `🔒 NNd` line on each dashboard card warns when <30 days remain
+- **Embedded SQLite history** — persistent snapshots in `/data/caddy_mon.db` auto-pruned after 7 days
 - **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
 - **Domain grouping** — sites grouped by parent domain (lope.ee, kaaber.ee, lope.lan) on the dashboard
 - **Alias listing** — extra hostnames on a route are shown as a bulleted list under the primary host
@@ -82,17 +85,18 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 
 # unit tests (no network needed)
-pytest tests/test_caddy_source.py tests/test_tls_source.py -v
+pytest tests/test_caddy_source.py tests/test_tls_source.py tests/test_db.py tests/test_alerts.py tests/test_sse.py -v
 
 # live Caddy config tests (needs Caddy admin API reachable; auto-skip otherwise)
 pytest tests/test_caddy_config.py -v
 ```
 
 Unit tests cover route parsing (`_parse_routes`), health-metric parsing
-(`_parse_healthy`), TLS cert parsing (`cert_status`), and TLD grouping. The
+(`_parse_healthy`), TLS cert parsing (`cert_status`), TLD grouping, SQLite
+persistence & 24h uptime calculations (`test_db.py`), incident alerting & cooldown
+(`test_alerts.py`), and real-time SSE broadcasting (`test_sse.py`). The
 `test_caddy_config.py` integration tests probe the live Caddy admin API and
-every upstream dial, catching Caddyfile mistakes (wrong IPs, missing servers)
-before they become outages.
+every upstream dial.
 
 ## Documentation
 

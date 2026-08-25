@@ -9,7 +9,8 @@ COPY app.py /app/app.py
 COPY caddy_mon /app/caddy_mon
 
 # Run as a non-root user for container hardening
-RUN useradd --create-home --uid 10001 appuser
+RUN useradd --create-home --uid 10001 appuser && \
+    mkdir -p /data && chown -R appuser:appuser /data
 USER appuser
 
 # Poll the Caddy admin API every 10 seconds; no persistent storage needed

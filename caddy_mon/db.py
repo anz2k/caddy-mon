@@ -1,0 +1,255 @@
+"""SQLite database layer for historical uptime, latency sparklines, and incident tracking."""
+
+import os
+import sqlite3
+import time
+from typing import Optional, List, Dict, Any
+
+from .config import DB_PATH, HISTORY_RETENTION_DAYS
+
+
+def _ensure_dir():
+    """Ensure parent directory for SQLite database exists."""
+    parent = os.path.dirname(os.path.abspath(DB_PATH))
+    if parent and not os.path.exists(parent):
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except OSError:
+            pass
+
+
+def get_connection() -> sqlite3.Connection:
+    """Return a configured SQLite database connection."""
+    _ensure_dir()
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    # WAL mode enables concurrent reads without locking writes
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
+def init_db():
+    """Create tables and indices if they do not exist."""
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS site_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                host TEXT NOT NULL,
+                alive INTEGER NOT NULL,
+                latency_ms REAL NOT NULL,
+                status INTEGER
+            );
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_snapshots_host_ts
+            ON site_snapshots(host, ts);
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_snapshots_ts
+            ON site_snapshots(ts);
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS incident_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts REAL NOT NULL,
+                host TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                details TEXT,
+                resolved_ts REAL
+            );
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_incidents_ts
+            ON incident_events(ts);
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS alert_state (
+                host TEXT PRIMARY KEY,
+                last_state INTEGER NOT NULL,
+                last_alert_ts REAL NOT NULL
+            );
+        """)
+        conn.commit()
+
+
+def record_snapshot(sites: List[Dict[str, Any]], now: Optional[float] = None):
+    """Insert current health and latency snapshots for all sites."""
+    if not sites:
+        return
+    ts = now or time.time()
+    rows = []
+    for s in sites:
+        primary = s.get("primary_host") or (s.get("hosts") or [""])[0]
+        if not primary:
+            continue
+        alive = 1 if s.get("alive") else 0
+        latency = float(s.get("latency_ms", 0.0))
+        # Get status from worst or first upstream probe if available
+        status = None
+        upstreams = s.get("upstreams") or []
+        for u in upstreams:
+            if isinstance(u, dict) and u.get("status"):
+                status = u.get("status")
+                break
+        rows.append((ts, primary, alive, latency, status))
+
+    if not rows:
+        return
+
+    try:
+        with get_connection() as conn:
+            conn.executemany(
+                "INSERT INTO site_snapshots (ts, host, alive, latency_ms, status) VALUES (?, ?, ?, ?, ?)",
+                rows,
+            )
+            conn.commit()
+    except sqlite3.Error:
+        pass
+
+
+def get_site_uptime_24h(host: str, now: Optional[float] = None) -> Optional[float]:
+    """Calculate uptime percentage over the last 24 hours (0.0 to 100.0).
+
+    Returns None if no snapshots exist in the 24h window.
+    """
+    ts_now = now or time.time()
+    cutoff = ts_now - 86400.0
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT COUNT(*) AS total, SUM(alive) AS alive_count
+                FROM site_snapshots
+                WHERE host = ? AND ts >= ?
+                """,
+                (host, cutoff),
+            )
+            row = cur.fetchone()
+            if not row or row["total"] == 0:
+                return None
+            total = row["total"]
+            alive_count = row["alive_count"] or 0
+            return round((alive_count / total) * 100.0, 1)
+    except sqlite3.Error:
+        return None
+
+
+def get_site_sparkline(
+    host: str,
+    hours: int = 24,
+    points: int = 12,
+    now: Optional[float] = None,
+) -> List[float]:
+    """Return an array of average latency data points for SVG sparkline visualization.
+
+    Divides the time window (default 24h) into `points` equal buckets.
+    Dead or missing buckets return 0.0.
+    """
+    ts_now = now or time.time()
+    window_secs = hours * 3600.0
+    cutoff = ts_now - window_secs
+    bucket_size = window_secs / points
+
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT ts, latency_ms, alive
+                FROM site_snapshots
+                WHERE host = ? AND ts >= ?
+                ORDER BY ts ASC
+                """,
+                (host, cutoff),
+            )
+            records = cur.fetchall()
+    except sqlite3.Error:
+        return [0.0] * points
+
+    if not records:
+        return [0.0] * points
+
+    # Aggregate into buckets
+    buckets = [[] for _ in range(points)]
+    for r in records:
+        idx = int((r["ts"] - cutoff) / bucket_size)
+        if 0 <= idx < points:
+            # If alive, record latency; if dead, 0.0
+            val = float(r["latency_ms"]) if r["alive"] else 0.0
+            buckets[idx].append(val)
+
+    sparkline = []
+    for b in buckets:
+        if b:
+            sparkline.append(round(sum(b) / len(b), 1))
+        else:
+            sparkline.append(0.0)
+
+    return sparkline
+
+
+def record_incident(
+    host: str,
+    event_type: str,
+    details: str,
+    ts: Optional[float] = None,
+) -> int:
+    """Record an incident event (e.g. 'DOWN', 'RECOVERED', 'TLS_EXPIRING')."""
+    now = ts or time.time()
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO incident_events (ts, host, event_type, details)
+                VALUES (?, ?, ?, ?)
+                """,
+                (now, host, event_type, details),
+            )
+            conn.commit()
+            return cur.lastrowid or 0
+    except sqlite3.Error:
+        return 0
+
+
+def get_recent_incidents(limit: int = 20) -> List[Dict[str, Any]]:
+    """Fetch recent incident events."""
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT id, ts, host, event_type, details, resolved_ts
+                FROM incident_events
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+            return [
+                {
+                    "id": r["id"],
+                    "ts": r["ts"],
+                    "host": r["host"],
+                    "event_type": r["event_type"],
+                    "details": r["details"],
+                    "resolved_ts": r["resolved_ts"],
+                }
+                for r in cur.fetchall()
+            ]
+    except sqlite3.Error:
+        return []
+
+
+def prune_old_history(days: int = HISTORY_RETENTION_DAYS, now: Optional[float] = None):
+    """Delete snapshot records older than `days` to keep database size bounded."""
+    ts_now = now or time.time()
+    cutoff = ts_now - (days * 86400.0)
+    try:
+        with get_connection() as conn:
+            conn.execute("DELETE FROM site_snapshots WHERE ts < ?", (cutoff,))
+            conn.commit()
+    except sqlite3.Error:
+        pass

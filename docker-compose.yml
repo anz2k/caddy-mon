@@ -14,6 +14,8 @@ services:
       - ${CADDY_STACK_DIR}/logs:/caddy-logs:ro
       # Caddy TLS certificate files (for expiry monitoring)
       - ${CADDY_STACK_DIR}/certs:/caddy-certs:ro
+      # Persistent history SQLite database
+      - ./data:/data
 
 networks:
   caddy_default:
