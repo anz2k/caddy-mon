@@ -1,9 +1,10 @@
 # caddy-mon
 
-Minimal Caddy reverse-proxy visibility dashboard. No Grafana, no Prometheus.
+A self-hosted Caddy reverse-proxy visibility dashboard — live health, latency,
+uptime history, log analytics, TLS expiry, security insights, and incident
+alerting, all pulled straight from the Caddy admin API and access logs.
 
-Shows one web page with the live status of every proxied site: alive/dead,
-latency, and last check time — pulled straight from the Caddy admin API.
+No Grafana, no Prometheus, no external TSDB — just Caddy, which you already run.
 
 ## Features
 
