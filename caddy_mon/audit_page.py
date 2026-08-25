@@ -223,7 +223,7 @@ def audit_page(request: Request) -> HTMLResponse:
     }}
 
     async function rollbackSnapshot(id) {{
-      if (!confirm('Are you sure you want to rollback Caddy configuration to snapshot #' + id + '? This will reload Caddy mälukonfiguratsioon.')) return;
+      if (!confirm('Are you sure you want to rollback Caddy configuration to snapshot #' + id + '? This will reload Caddy in-memory configuration.')) return;
       try {{
         const r = await fetch('/api/caddy/rollback/' + id, {{ method: 'POST' }});
         const res = await r.json();

@@ -1,7 +1,9 @@
 """Unit tests for Caddy Reverse-Proxy CRUD engine, validation, snapshots, and audit trail."""
 
 import json
+import os
 import time
+import tempfile
 from unittest import mock
 import pytest
 
@@ -12,6 +14,16 @@ from caddy_mon.caddy_crud import (
     delete_caddy_route,
     rollback_caddy_config,
 )
+
+
+@pytest.fixture(autouse=True)
+def temp_db():
+    """Run each test with an isolated temporary SQLite database."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_file = os.path.join(tmpdir, "test_caddy_mon.db")
+        with mock.patch.object(db, "DB_PATH", db_file):
+            db.init_db()
+            yield db_file
 
 
 def test_validate_route_input():
