@@ -4,6 +4,8 @@ services:
     image: caddy-mon:local
     container_name: caddy-mon
     restart: unless-stopped
+    env_file:
+      - .env
     # Join the same network as caddy-proxy so the DNS name "caddy-proxy" resolves
     networks:
       - caddy_default
