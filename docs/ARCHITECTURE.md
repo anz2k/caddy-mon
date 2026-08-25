@@ -95,6 +95,21 @@ admin + reverse_proxy_healthy + Go runtime). So:
 - The deployment directory is a clone of this repo; `git pull && docker compose
   up -d --build` applies updates.
 
+## Known limitations / backlog
+
+- **Sequential probes:** `refresh()` probes upstreams one-by-one in a sync loop.
+  With many dead upstreams this can take longer than `POLL_INTERVAL`, though
+  the `_state` cache (10s) means it does not block every request. A future
+  version could use `httpx.AsyncClient` + `asyncio.gather()` for parallelism.
+- **No automated tests yet:** critical logic (`_parse_routes`, `_parse_healthy`,
+  `cert_status`) is not covered by `pytest`. Tests are on the backlog.
+- **No authentication:** the UI and JSON APIs are open on port 8080. This is
+  acceptable for a LAN-only deployment behind Caddy (e.g. `caddymon.lope.lan`),
+  but if exposed more widely, add Caddy basic-auth or forward-auth.
+- **HTML built with f-strings:** all external input (log `uri`/`host`, cert
+  hosts, route labels) is passed through `html.escape()` to prevent XSS, but a
+  template engine (Jinja2) would give auto-escaping by default.
+
 ## Code layout
 
 The app is split into a small `caddy_mon` package; `app.py` is only a thin
