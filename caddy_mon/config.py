@@ -39,3 +39,6 @@ ALERT_COOLDOWN_MINUTES = int(os.environ.get("ALERT_COOLDOWN_MINUTES", "15"))
 # If left empty, the dashboard is open without credentials.
 AUTH_USER = os.environ.get("AUTH_USER", "")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "")
+
+# Custom branding / title for public status page
+STATUS_TITLE = os.environ.get("STATUS_TITLE", "System Status")

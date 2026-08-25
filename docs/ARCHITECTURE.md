@@ -43,8 +43,9 @@ ports or site groups). All are merged into the dashboard/topology view.
 
 | Route | Purpose | Access |
 |-------|---------|--------|
-| `GET /status` | Public system status overview (sanitized services, incident timeline) | **Public** |
+| `GET /status` | Public system status overview (30-day uptime bars, incident timeline) | **Public** |
 | `GET /api/status` | Sanitized public status JSON API | **Public** |
+| `GET /status/feed.xml` | Public RSS 2.0 incident feed for monitoring and subscribers | **Public** |
 | `GET /` | HTML dashboard (cards with 24h uptime, sparklines, diagnostics, SSE) | Protected |
 | `GET /api/state` | JSON: `{last_update, sites[], errors[]}` | Protected |
 | `GET /api/events` | Server-Sent Events (SSE) live streaming updates | Protected |
@@ -53,6 +54,11 @@ ports or site groups). All are merged into the dashboard/topology view.
 | `POST /api/probe/{host}` | Immediate on-demand diagnostic probe of all upstreams for a host | Protected |
 | `POST /api/maintenance/{host}` | Enable or disable maintenance mode for a host | Protected |
 | `GET /api/maintenance` | JSON: `{maintenance{}}` active maintenance mapping | Protected |
+| `GET /security` | HTML security and client traffic analytics dashboard | Protected |
+| `GET /api/security` | JSON: `{status_distribution, top_clients[], suspicious_requests[]}` | Protected |
+| `GET /caddy/config` | HTML active Caddy JSON configuration inspector & reloader | Protected |
+| `GET /api/caddy/config` | JSON export of active Caddy configuration | Protected |
+| `POST /api/caddy/reload` | Trigger zero-downtime configuration reload via Caddy admin API | Protected |
 | `GET /topology` | HTML SVG route map (host → path → Caddy proxy → upstream) | Protected |
 | `GET /api/topology` | JSON: `{nodes[], edges[]}` for the route map | Protected |
 | `GET /logs` | HTML log analytics (per-host 5xx/error%, recent 5xx) | Protected |
@@ -85,18 +91,20 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 | Module | Responsibility |
 |--------|---------------|
 | `app.py` | FastAPI app: lifespan background worker, route registration, auth dependencies |
-| `caddy_mon/config.py` | Configuration settings (`CADDY_API`, `DB_PATH`, Telegram/Webhook tokens, `AUTH_*`, TZ) |
+| `caddy_mon/config.py` | Configuration settings (`CADDY_API`, `DB_PATH`, Telegram/Webhook tokens, `AUTH_*`, `STATUS_TITLE`, TZ) |
 | `caddy_mon/auth.py` | Optional HTTP Basic Auth security dependency using constant-time comparison |
 | `caddy_mon/db.py` | SQLite database layer: snapshots, 24h uptime, sparklines, maintenance, incidents, retention |
 | `caddy_mon/alerts.py` | Incident alerting: Telegram bot, Webhooks, transition detection, maintenance suppression |
 | `caddy_mon/sse.py` | Server-Sent Events broadcaster: live client queue management, keepalive |
-| `caddy_mon/status_page.py` | Public status page HTML + sanitized `/api/status` endpoint |
+| `caddy_mon/status_page.py` | Public status page HTML, sanitized `/api/status`, and RSS 2.0 feed (`/status/feed.xml`) |
+| `caddy_mon/security_page.py` | Security & client analytics: top client IPs, status codes (4xx/429/5xx), scanning detection |
+| `caddy_mon/caddy_control.py` | Interactive Caddy control plane: active JSON configuration inspector and reloader |
 | `caddy_mon/diagnostics.py` | On-demand detailed upstream probing (`POST /api/probe/{host}`) |
 | `caddy_mon/caddy_source.py` | Caddy admin API: routes, health metrics, async probes, background loop |
-| `caddy_mon/log_source.py` | Access-log ingestion: `ingest_logs()`, `host_log_stats()`, `log_stats()` |
+| `caddy_mon/log_source.py` | Access-log ingestion: port stripping, client IP tracking, `host_log_stats()`, `log_stats()` |
 | `caddy_mon/tls_source.py` | TLS cert parsing: `cert_status()`, expiry tracking |
 | `caddy_mon/dashboard.py` | Dashboard HTML page with SVG sparklines + `/api/state` |
 | `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
 | `caddy_mon/tls_page.py` | TLS expiry HTML page + `/api/tls` |
-| `tests/` | Comprehensive unit tests (43 unit tests) + live Caddy integration tests |
+| `tests/` | Comprehensive unit tests (52 unit tests across 12 test suites) + live Caddy integration tests |

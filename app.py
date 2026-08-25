@@ -1,7 +1,7 @@
 """caddy-mon — FastAPI entry point.
 
 Wires the Caddy/Log sources, SQLite history, SSE streaming, authentication,
-public status page, diagnostics, and page modules into a single application.
+public status page, security analytics, Caddy control plane, and page modules into a single app.
 """
 
 import asyncio
@@ -23,8 +23,10 @@ from caddy_mon.db import (
 from caddy_mon.caddy_source import refresh, background_poll_loop
 from caddy_mon.sse import sse_event_stream
 from caddy_mon.dashboard import dashboard, api_state
-from caddy_mon.status_page import status_page, api_status
+from caddy_mon.status_page import status_page, api_status, status_feed_xml
 from caddy_mon.diagnostics import probe_host_detailed
+from caddy_mon.security_page import security_page, security_analytics
+from caddy_mon.caddy_control import caddy_config_page, get_caddy_raw_config, reload_caddy
 from caddy_mon.topology import topology, api_topology
 from caddy_mon.logs_page import logs_page, api_logs
 from caddy_mon.tls_page import tls_page, api_tls
@@ -63,6 +65,12 @@ async def status_route(request: Request):
 async def api_status_route():
     """Sanitized public status JSON API."""
     return api_status()
+
+
+@app.get("/status/feed.xml")
+async def status_feed_route():
+    """Public RSS 2.0 XML incident feed for subscribers and monitoring tools."""
+    return status_feed_xml()
 
 
 # --------------------------------------------------------------------------
@@ -131,6 +139,36 @@ async def api_set_maintenance_route(
 async def api_get_maintenance_route():
     """Return all sites currently in maintenance mode."""
     return {"maintenance": get_all_maintenance()}
+
+
+@app.get("/security", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def security_route(request: Request, window: int = 3600):
+    """Security and client IP analytics dashboard view."""
+    return security_page(request, window=window)
+
+
+@app.get("/api/security", dependencies=[Depends(require_auth)])
+async def api_security_route(window: int = 3600):
+    """Security and client IP analytics JSON API."""
+    return security_analytics(window=window)
+
+
+@app.get("/caddy/config", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def caddy_config_route(request: Request):
+    """Live Caddy active JSON configuration inspector."""
+    return await caddy_config_page(request)
+
+
+@app.get("/api/caddy/config", dependencies=[Depends(require_auth)])
+async def api_caddy_config_route():
+    """Export active Caddy JSON configuration."""
+    return await get_caddy_raw_config()
+
+
+@app.post("/api/caddy/reload", dependencies=[Depends(require_auth)])
+async def api_caddy_reload_route():
+    """Trigger zero-downtime configuration reload on Caddy proxy."""
+    return await reload_caddy()
 
 
 @app.get("/topology", response_class=HTMLResponse, dependencies=[Depends(require_auth)])

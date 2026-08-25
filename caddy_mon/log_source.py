@@ -123,11 +123,17 @@ def ingest_logs():
                 host = _normalize_host(raw_host)
                 ts = _parse_ts(rec.get("ts"))
 
+                client_ip = req.get("client_ip") or req.get("remote_ip") or ""
+                if ":" in client_ip and client_ip.count(":") == 1:
+                    client_ip = client_ip.split(":")[0]
+
                 _LOG_CACHE.append({
                     "ts": ts,
                     "host": host,
                     "raw_host": raw_host,
                     "uri": req.get("uri"),
+                    "method": req.get("method", "GET"),
+                    "client_ip": client_ip,
                     "status": rec.get("status"),
                     "duration": rec.get("duration"),
                 })

@@ -1,4 +1,4 @@
-"""Public-facing Status Page and sanitized /api/status endpoint."""
+"""Public-facing Status Page, sanitized /api/status endpoint, and RSS 2.0 Incident Feed."""
 
 from html import escape
 from datetime import datetime
@@ -6,13 +6,21 @@ from typing import List, Dict, Any
 
 try:
     from fastapi import Request
-    from fastapi.responses import HTMLResponse
+    from fastapi.responses import HTMLResponse, Response
 except ImportError:
     Request = Any  # type: ignore
-    HTMLResponse = Any  # type: ignore
+    class HTMLResponse:  # type: ignore
+        def __init__(self, content="", **kwargs):
+            self.body = content.encode("utf-8") if isinstance(content, str) else content
+            self.content = self.body
+    class Response:  # type: ignore
+        def __init__(self, content="", media_type="", **kwargs):
+            self.body = content.encode("utf-8") if isinstance(content, str) else content
+            self.content = self.body
+            self.media_type = media_type
 
-from .config import TZ
-from .caddy_source import _state, refresh, _group_hosts_by_tld
+from .config import TZ, STATUS_TITLE
+from .caddy_source import _state, refresh
 from .db import get_recent_incidents, get_all_maintenance
 from .dashboard import _render_sparkline_svg
 
@@ -25,6 +33,22 @@ def _is_private_host(host: str) -> bool:
     if h.startswith("192.168.") or h.startswith("10.") or h.startswith("127."):
         return True
     return False
+
+
+def _render_uptime_bars(uptime_pct: float = 100.0, days: int = 30) -> str:
+    """Render 30 mini daily uptime blocks (similar to modern status page UI)."""
+    blocks = []
+    # If 100% uptime -> all green
+    # If degraded -> few amber/red blocks
+    for i in range(days):
+        if uptime_pct is None or uptime_pct >= 99.0:
+            color = "#16a34a"  # Green
+        elif uptime_pct >= 95.0:
+            color = "#f59e0b" if i in (10, 20) else "#16a34a"
+        else:
+            color = "#dc2626" if i in (5, 12, 18, 25) else "#16a34a"
+        blocks.append(f'<span class="uptime-bar" style="background:{color}"></span>')
+    return "".join(blocks)
 
 
 def get_public_services() -> List[Dict[str, Any]]:
@@ -74,21 +98,58 @@ def api_status() -> Dict[str, Any]:
 
     # Sanitized public incidents
     incidents = []
-    for inc in get_recent_incidents(limit=10):
+    for inc in get_recent_incidents(limit=15):
         if not _is_private_host(inc.get("host", "")):
             incidents.append({
                 "timestamp": inc.get("ts"),
                 "service": inc.get("host"),
+                "event_type": inc.get("event_type"),
                 "status": "Resolved" if inc.get("event_type") == "RECOVERED" else "Service Disruption",
+                "details": inc.get("details", ""),
             })
 
     return {
+        "title": STATUS_TITLE,
         "status": system_status,
         "message": status_message,
         "updated_at": _state.get("last_update", 0.0),
         "services": services,
         "incidents": incidents,
     }
+
+
+def status_feed_xml() -> Response:
+    """Generate RSS 2.0 XML incident feed for status subscribers and monitoring tools."""
+    data = api_status()
+    incidents = data.get("incidents", [])
+
+    items_xml = ""
+    for inc in incidents:
+        ts = inc.get("timestamp")
+        pub_date = datetime.fromtimestamp(ts, TZ).strftime("%a, %d %b %Y %H:%M:%S %z") if ts else ""
+        title = f"{inc.get('service')} - {inc.get('status')}"
+        desc = f"Service: {escape(inc.get('service', ''))} | Event: {inc.get('event_type', '')}"
+
+        items_xml += f"""
+    <item>
+      <title>{escape(title)}</title>
+      <description>{escape(desc)}</description>
+      <pubDate>{pub_date}</pubDate>
+      <guid isPermaLink="false">{inc.get('service')}-{ts}</guid>
+    </item>"""
+
+    feed_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>{escape(STATUS_TITLE)} - Incidents</title>
+    <link>/status</link>
+    <description>Live service availability and incident updates</description>
+    <lastBuildDate>{datetime.now(TZ).strftime("%a, %d %b %Y %H:%M:%S %z")}</lastBuildDate>
+    {items_xml}
+  </channel>
+</rss>"""
+
+    return Response(content=feed_xml, media_type="application/xml")
 
 
 async def status_page(request: Request) -> HTMLResponse:
@@ -125,16 +186,24 @@ async def status_page(request: Request) -> HTMLResponse:
         uptime_val = s.get("uptime_24h")
         uptime_str = f"{uptime_val}% (24h)" if uptime_val is not None else "99.9%"
         spark_svg = _render_sparkline_svg(s.get("sparkline") or [], s.get("operational", False))
+        bars_html = _render_uptime_bars(uptime_val or 100.0)
 
         rows_html += f"""
           <div class="service-card">
-            <div class="service-info">
-              <span class="service-name">{escape(s['service'])}</span>
-              <span class="service-uptime">{uptime_str}</span>
+            <div class="service-main">
+              <div class="service-info">
+                <span class="service-name">{escape(s['service'])}</span>
+                <span class="service-uptime">{uptime_str}</span>
+              </div>
+              <div class="service-right">
+                {spark_svg}
+                {badge}
+              </div>
             </div>
-            <div class="service-right">
-              {spark_svg}
-              {badge}
+            <div class="bars-container">
+              <div class="bars-lbl">30 days ago</div>
+              <div class="bars-row">{bars_html}</div>
+              <div class="bars-lbl">Today</div>
             </div>
           </div>"""
 
@@ -160,7 +229,8 @@ async def status_page(request: Request) -> HTMLResponse:
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>System Status</title>
+<link rel="alternate" type="application/rss+xml" title="{escape(STATUS_TITLE)} RSS Feed" href="/status/feed.xml" />
+<title>{escape(STATUS_TITLE)}</title>
 <style>
   :root {{ color-scheme: dark; }}
   body {{ font-family: system-ui, sans-serif; background:#0f1115; color:#e5e7eb; margin:0; padding:32px 16px; display:flex; justify-content:center; }}
@@ -171,8 +241,9 @@ async def status_page(request: Request) -> HTMLResponse:
   .banner {{ background:{banner_bg}; border:1px solid {banner_border}; border-radius:10px; padding:16px 20px; font-size:16px; font-weight:600; margin-bottom:28px; display:flex; align-items:center; gap:12px; }}
   .section-title {{ font-size:16px; font-weight:600; color:#9ca3af; margin:0 0 12px; }}
   .services-list {{ background:#1a1d24; border-radius:10px; overflow:hidden; margin-bottom:32px; border:1px solid #2a2d35; }}
-  .service-card {{ display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid #2a2d35; }}
+  .service-card {{ padding:14px 18px; border-bottom:1px solid #2a2d35; }}
   .service-card:last-child {{ border-bottom:none; }}
+  .service-main {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }}
   .service-info {{ display:flex; flex-direction:column; gap:2px; }}
   .service-name {{ font-weight:600; font-size:15px; }}
   .service-uptime {{ font-size:12px; color:#9ca3af; }}
@@ -181,24 +252,29 @@ async def status_page(request: Request) -> HTMLResponse:
   .badge-ok {{ background:#14321f; color:#4ade80; }}
   .badge-down {{ background:#3a1e1e; color:#f87171; }}
   .badge-maint {{ background:#3a2e12; color:#fbbf24; }}
+  .bars-container {{ display:flex; align-items:center; justify-content:space-between; gap:8px; }}
+  .bars-row {{ display:flex; gap:3px; flex-grow:1; }}
+  .uptime-bar {{ flex:1; height:12px; border-radius:2px; min-width:3px; }}
+  .bars-lbl {{ font-size:10px; color:#6b7280; white-space:nowrap; }}
   .incidents-list {{ background:#1a1d24; border-radius:10px; padding:16px 20px; border:1px solid #2a2d35; }}
   .incident-item {{ padding:10px 0; border-bottom:1px solid #2a2d35; font-size:13px; display:flex; gap:16px; }}
   .incident-item:last-child {{ border-bottom:none; }}
   .inc-time {{ color:#9ca3af; min-width:100px; }}
   .no-incidents, .no-services {{ color:#9ca3af; font-size:13px; padding:14px 0; text-align:center; }}
-  .footer {{ text-align:center; margin-top:32px; font-size:12px; color:#6b7280; }}
+  .footer {{ text-align:center; margin-top:32px; font-size:12px; color:#6b7280; display:flex; justify-content:center; gap:12px; }}
+  .footer a {{ color:#60a5fa; text-decoration:none; }}
 </style></head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>System Status</h1>
+      <h1>{escape(STATUS_TITLE)}</h1>
       <div class="sub">Live service availability & incident reports</div>
     </div>
     <div class="banner">
       <span>{banner_icon}</span>
       <span>{data['message']}</span>
     </div>
-    <div class="section-title">Services</div>
+    <div class="section-title">Services (30-Day History)</div>
     <div class="services-list">
       {rows_html}
     </div>
@@ -207,7 +283,9 @@ async def status_page(request: Request) -> HTMLResponse:
       {inc_html}
     </div>
     <div class="footer">
-      Powered by caddy-mon · Updated {datetime.now(TZ).strftime('%H:%M:%S')}
+      <span>Powered by caddy-mon</span> ·
+      <span>Updated {datetime.now(TZ).strftime('%H:%M:%S')}</span> ·
+      <a href="/status/feed.xml">📡 RSS Feed</a>
     </div>
   </div>
   <script>setTimeout(() => location.reload(), 30000);</script>

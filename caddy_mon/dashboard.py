@@ -198,7 +198,7 @@ async def dashboard(request: Request):
   <div class="sub">
     Caddy reverse-proxy live status · <span id="stat-total">{total}</span> sites · <span id="stat-alive">{alive}</span> alive · 
     updated <span id="updated-time">{datetime.now(TZ).strftime('%H:%M:%S')}</span> · 
-    <a href="/topology">topology</a> · <a href="/logs">logs</a> · <a href="/tls">tls</a> · <a href="/status" style="font-weight:600">status page</a>
+    <a href="/topology">topology</a> · <a href="/logs">logs</a> · <a href="/security">security</a> · <a href="/tls">tls</a> · <a href="/caddy/config">caddy config</a> · <a href="/status" style="font-weight:600">status page</a>
   </div>
   <div id="err-container">{err_html}</div>
   <div class="groups" id="groups-container">{groups_html}</div>

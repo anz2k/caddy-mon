@@ -121,10 +121,20 @@ multiple servers (e.g. for different listen ports or site groups).
 
 **How it works:** `caddy_mon.alerts` monitors state transitions against the `alert_state` SQLite table. Cooldown throttling (`ALERT_COOLDOWN_MINUTES`) prevents alert floods during flapping, and incidents are archived in `incident_events`.
 
-## Public Status Page
+## Public Status Page & RSS Feed
 
-**What it adds:** A clean, public-facing status page at `/status` and sanitized JSON at `/api/status` for external users and customers.
-**How it works:** Displays overall system operational status ("All Systems Operational" / "Partial Outage" / "Major Outage"), 24h uptime %, and an incident timeline. Strictly sanitizes private network details: internal LAN IPs (`192.168.x.x`), internal port numbers, and `.lan` / `.local` domains are hidden.
+**What it adds:** A clean, public-facing status page at `/status`, sanitized JSON at `/api/status`, and an RSS 2.0 incident feed at `/status/feed.xml`.
+**How it works:** Displays overall system operational status ("All Systems Operational" / "Partial Outage" / "Major Outage"), 30-day daily uptime history bars, 24h uptime %, and an incident timeline. Strictly sanitizes private network details: internal LAN IPs (`192.168.x.x`), internal port numbers, and `.lan` / `.local` domains are hidden.
+
+## Security & Client Analytics
+
+**What it adds:** A dedicated security and traffic analytics dashboard at `/security` (JSON at `/api/security`).
+**How it works:** Aggregates client IPs, distinguishes LAN vs WAN traffic, counts status code distributions (2xx, 3xx, 4xx, 429 rate limits, 5xx), and lists top suspicious requests (e.g. 404/403 scanning attempts).
+
+## Caddy Control Plane & Config Inspector
+
+**What it adds:** A live Caddy JSON configuration inspector and zero-downtime reloader at `/caddy/config` (`GET /api/caddy/config`, `POST /api/caddy/reload`).
+**How it works:** Directly queries the Caddy Admin API (`GET /config/`), renders formatted JSON with one-click download, and allows administrators to safely reload Caddy configuration on the fly.
 
 ## On-Demand Diagnostics
 
@@ -139,9 +149,9 @@ multiple servers (e.g. for different listen ports or site groups).
 ## Optional Authentication
 
 **What it adds:** Optional HTTP Basic Auth security layer configurable via `AUTH_USER` and `AUTH_PASSWORD` in `.env`.
-**How it works:** When enabled, protects administrative dashboard pages, APIs, and diagnostics routes (`/`, `/topology`, `/logs`, `/tls`, `/api/probe/*`) using constant-time string comparison (`secrets.compare_digest`), while leaving the public status page (`/status` & `/api/status`) accessible.
+**How it works:** When enabled, protects administrative dashboard pages, APIs, and diagnostics routes (`/`, `/topology`, `/logs`, `/tls`, `/security`, `/caddy/config`, `/api/probe/*`) using constant-time string comparison (`secrets.compare_digest`), while leaving the public status page (`/status`, `/status/feed.xml`) accessible.
 
 ## Planned / future (not yet implemented)
 
-- Interactive control plane (Caddy route modification & upstream draining via Caddy Admin API).
+- Interactive dynamic route editor & upstream draining via Caddy Admin API.
 - SSO / OIDC forward auth integration (Authelia / Authentik).
