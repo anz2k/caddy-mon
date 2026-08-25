@@ -246,7 +246,7 @@ async def refresh(force: bool = False):
             alive = all(upstream_ok(u) for u in up_probes)
             worst_ms = max((u["ms"] for u in up_probes if u["probe_ok"]), default=0.0)
             group = _tld_group(s["hosts"][0])
-            log = host_log_stats(s["hosts"][0], window=3600)
+            log = host_log_stats(s["hosts"], window=3600)
             tls = _site_tls(s["hosts"])
             primary = s["hosts"][0]
             uptime_24h = get_site_uptime_24h(primary, now=now)
