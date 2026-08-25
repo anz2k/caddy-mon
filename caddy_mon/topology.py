@@ -1,5 +1,6 @@
 """Route topology: API + SVG HTML page."""
 
+from html import escape
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 from .config import TZ
@@ -93,7 +94,7 @@ def topology(request: Request):
             else:
                 fill, stroke = "#2a2a2a", "#9ca3af"
         svg.append(f'<g><rect x="{x}" y="{y}" width="150" height="36" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>'
-                   f'<text x="{x+75}" y="{y+22}" fill="#e5e7eb" font-size="12" text-anchor="middle" font-family="system-ui">{n["label"][:22]}</text></g>')
+                   f'<text x="{x+75}" y="{y+22}" fill="#e5e7eb" font-size="12" text-anchor="middle" font-family="system-ui">{escape(n["label"][:22])}</text></g>')
     svg.append('<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#9ca3af"/></marker></defs>')
     svg.append('</svg>')
 

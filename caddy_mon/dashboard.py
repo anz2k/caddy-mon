@@ -1,5 +1,6 @@
 """Dashboard (home page) and /api/state."""
 
+from html import escape
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 from .config import TZ
@@ -31,11 +32,11 @@ def _render_card(s):
             <span class="probe">{probe}</span>
           </div>"""
     aliases = [h for h in s["hosts"] if h != s["primary_host"]]
-    hosts_html = f'<div class="host">{s["primary_host"]}</div>'
+    hosts_html = f'<div class="host">{escape(s["primary_host"])}</div>'
     if aliases:
         hosts_html += '<div class="aliases"><span class="aliases-label">also:</span>'
         for a in aliases:
-            hosts_html += f'<div class="alias">↳ {a}</div>'
+            hosts_html += f'<div class="alias">↳ {escape(a)}</div>'
         hosts_html += '</div>'
     log = s.get("log")
     if log:

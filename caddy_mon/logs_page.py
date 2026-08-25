@@ -1,5 +1,6 @@
 """Log analytics page and /api/logs."""
 
+from html import escape
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 from .config import TZ
@@ -18,7 +19,7 @@ def logs_page(request: Request, window: int = 3600):
     for r in rows:
         err_color = "#f87171" if r["error_pct"] > 0 else "#9ca3af"
         table_rows += f"""<tr>
-          <td>{r['host']}</td>
+          <td>{escape(r['host'])}</td>
           <td>{r['requests']}</td>
           <td style="color:{err_color}">{r['errors_5xx']}</td>
           <td style="color:{err_color}">{r['error_pct']}%</td>
@@ -28,8 +29,10 @@ def logs_page(request: Request, window: int = 3600):
     recent_html = ""
     for e in recent[:20]:
         ts = datetime.fromtimestamp(e["ts"], TZ).strftime("%H:%M:%S") if e["ts"] else "?"
-        uri = (e["uri"] or "")[:60]
-        recent_html += f"""<tr><td>{ts}</td><td>{e['host']}</td><td>{e['status']}</td><td style="color:#9ca3af">{uri}</td></tr>"""
+        uri = escape((e["uri"] or "")[:60])
+        host = escape(e["host"] or "")
+        status = e["status"] if isinstance(e["status"], int) else "?"
+        recent_html += f"""<tr><td>{ts}</td><td>{host}</td><td>{status}</td><td style="color:#9ca3af">{uri}</td></tr>"""
     if not recent_html:
         recent_html = '<tr><td colspan="4" style="color:#9ca3af">No 5xx errors in window</td></tr>'
     html = f"""<!doctype html>
