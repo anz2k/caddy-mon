@@ -210,6 +210,8 @@ def test_group_hosts_by_tld():
 
 
 def test_parse_transport_timeouts():
+    # Caddy JSON API expresses durations in nanoseconds (Go time.Duration).
+    # 30s -> 30_000_000_000 ns, 3600s -> 3_600_000_000_000 ns, 15s -> 15_000_000_000 ns.
     routes = [{
         "match": [{"host": ["stream.lope.ee"]}],
         "handle": [{
@@ -217,11 +219,11 @@ def test_parse_transport_timeouts():
             "upstreams": [{"dial": "192.168.1.50:8080"}],
             "transport": {
                 "protocol": "http",
-                "dial_timeout": "30s",
-                "read_timeout": "3600s",
-                "response_header_timeout": "15s",
+                "dial_timeout": 30_000_000_000,
+                "read_timeout": 3_600_000_000_000,
+                "response_header_timeout": 15_000_000_000,
                 "keepalive": {
-                    "idle_timeout": "120s"
+                    "idle_timeout": 120_000_000_000
                 }
             },
             "load_balancing": {
@@ -235,9 +237,9 @@ def test_parse_transport_timeouts():
     s = out[0]
     assert s["transport"] is not None
     assert s["transport"]["dial_timeout"] == "30s"
-    assert s["transport"]["read_timeout"] == "3600s"
+    assert s["transport"]["read_timeout"] == "1h"
     assert s["transport"]["response_header_timeout"] == "15s"
-    assert s["transport"]["keepalive_idle"] == "120s"
+    assert s["transport"]["keepalive_idle"] == "2m"
     assert s["load_balancing"] is not None
     assert s["load_balancing"]["policy"] == "least_conn"
     assert s["load_balancing"]["retries"] == 3

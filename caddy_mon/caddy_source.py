@@ -26,6 +26,38 @@ _state = {
 _refresh_lock = asyncio.Lock()
 
 
+def _fmt_duration(value) -> str:
+    """Format a Caddy duration value into a short human-readable string.
+
+    In the Caddy JSON config, durations (dial_timeout, read_timeout, etc.)
+    are Go ``time.Duration`` values expressed in **nanoseconds** (an integer),
+    e.g. 3600000000000 == 3600s == 1h. Caddyfile-style strings like "30s"
+    only appear in the Caddyfile, never in the admin-API JSON.
+
+    Accepts an int (ns) or a string (already formatted) and returns a compact
+    string such as "1h", "30s", "500ms".
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        # Already a human string (e.g. from a test fixture) — pass through.
+        return value
+    try:
+        ns = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if ns <= 0:
+        return "0s"
+    s = ns / 1_000_000_000
+    if s < 1:
+        return f"{int(ns / 1_000_000)}ms"
+    if s < 60:
+        return f"{int(s)}s"
+    if s < 3600:
+        return f"{int(s // 60)}m"
+    return f"{int(s // 3600)}h"
+
+
 async def _get_json(path: str):
     """GET CADDY_API + path, return dict (or {"_error": ...} on failure)."""
     try:
@@ -58,10 +90,11 @@ def _parse_routes(routes):
                 if isinstance(tr, dict):
                     for k in ("dial_timeout", "read_timeout", "write_timeout", "response_header_timeout", "protocol"):
                         if tr.get(k):
-                            tr_info[k] = str(tr.get(k))
+                            # Durations arrive from the Caddy JSON API in nanoseconds.
+                            tr_info[k] = _fmt_duration(tr.get(k)) if k != "protocol" else str(tr.get(k))
                     keepalive = tr.get("keepalive") or {}
                     if isinstance(keepalive, dict) and keepalive.get("idle_timeout"):
-                        tr_info["keepalive_idle"] = str(keepalive.get("idle_timeout"))
+                        tr_info["keepalive_idle"] = _fmt_duration(keepalive.get("idle_timeout"))
 
                 # Extract load-balancing policy & retries
                 lb = node.get("load_balancing") or {}
@@ -75,7 +108,7 @@ def _parse_routes(routes):
                     if lb.get("retries") is not None:
                         lb_info["retries"] = lb.get("retries")
                     if lb.get("try_duration"):
-                        lb_info["try_duration"] = str(lb.get("try_duration"))
+                        lb_info["try_duration"] = _fmt_duration(lb.get("try_duration"))
 
                 for p in paths:
                     entry = {"paths": [p], "upstreams": ups}
