@@ -112,11 +112,11 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 | `caddy_mon/security_page.py` | Security & client analytics: top client IPs, status codes (4xx/429/5xx), scanning detection |
 | `caddy_mon/caddy_control.py` | Interactive Caddy control plane: active JSON configuration inspector and reloader |
 | `caddy_mon/diagnostics.py` | On-demand detailed upstream probing (`POST /api/probe/{host}`) |
-| `caddy_mon/caddy_source.py` | Caddy admin API: routes, health metrics, async probes, background loop |
+| `caddy_mon/caddy_source.py` | Caddy admin API: routes, transport timeouts, health metrics, async probes, background loop |
 | `caddy_mon/log_source.py` | Access-log ingestion: port stripping, client IP tracking, `get_host_recent_logs()`, `log_stats()` |
 | `caddy_mon/tls_source.py` | TLS cert parsing: automated ACME & manual cert discovery, expiry tracking |
 | `caddy_mon/dashboard.py` | Modern Tailwind dashboard with search, quick filters, sorting, Site Inspector, and CRUD modals |
 | `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
 | `caddy_mon/tls_page.py` | TLS expiry HTML page + `/api/tls` |
-| `tests/` | Comprehensive unit tests (58 unit tests across 14 test suites) + live Caddy integration tests |
+| `tests/` | Comprehensive unit tests (59 unit tests across 14 test suites) + live Caddy integration tests |

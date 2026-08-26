@@ -39,10 +39,9 @@ async def _get_json(path: str):
 
 
 def _parse_routes(routes):
-    """Return list of {hosts:[...], paths:[...], upstreams:[...]}.
+    """Return list of {hosts:[...], paths:[...], upstreams:[...], transport: {...}, load_balancing: {...}}.
 
-    Supports nested `subroute` handlers and path matchers. A path matcher
-    scoped to a reverse_proxy branch becomes its own (path, upstreams) entry.
+    Supports nested `subroute` handlers, path matchers, transport timeouts, and load-balancing policies.
     """
     out = []
 
@@ -52,8 +51,40 @@ def _parse_routes(routes):
             if node.get("handler") == "reverse_proxy":
                 ups = [u.get("dial") for u in node.get("upstreams", []) if u.get("dial")]
                 paths = inherited_paths or ["/"]
+
+                # Extract transport settings (dial_timeout, read_timeout, write_timeout, keepalive)
+                tr = node.get("transport") or {}
+                tr_info = {}
+                if isinstance(tr, dict):
+                    for k in ("dial_timeout", "read_timeout", "write_timeout", "response_header_timeout", "protocol"):
+                        if tr.get(k):
+                            tr_info[k] = str(tr.get(k))
+                    keepalive = tr.get("keepalive") or {}
+                    if isinstance(keepalive, dict) and keepalive.get("idle_timeout"):
+                        tr_info["keepalive_idle"] = str(keepalive.get("idle_timeout"))
+
+                # Extract load-balancing policy & retries
+                lb = node.get("load_balancing") or {}
+                lb_info = {}
+                if isinstance(lb, dict):
+                    sel = lb.get("selection_policy")
+                    if isinstance(sel, dict) and sel.get("policy"):
+                        lb_info["policy"] = sel.get("policy")
+                    elif isinstance(sel, str):
+                        lb_info["policy"] = sel
+                    if lb.get("retries") is not None:
+                        lb_info["retries"] = lb.get("retries")
+                    if lb.get("try_duration"):
+                        lb_info["try_duration"] = str(lb.get("try_duration"))
+
                 for p in paths:
-                    branches.append({"paths": [p], "upstreams": ups})
+                    entry = {"paths": [p], "upstreams": ups}
+                    if tr_info:
+                        entry["transport"] = tr_info
+                    if lb_info:
+                        entry["load_balancing"] = lb_info
+                    branches.append(entry)
+
             routes_block = node.get("routes")
             if isinstance(routes_block, list):
                 for sub in routes_block:
@@ -92,11 +123,18 @@ def _parse_routes(routes):
         # Deduplicate identical (paths, upstreams) branches
         seen = set()
         deduped = []
+        site_transport = {}
+        site_lb = {}
         for b in branches:
             key = (tuple(b["paths"]), tuple(b["upstreams"]))
             if key not in seen:
                 seen.add(key)
                 deduped.append(b)
+            if b.get("transport"):
+                site_transport.update(b["transport"])
+            if b.get("load_balancing"):
+                site_lb.update(b["load_balancing"])
+
         branches = deduped
         # Aggregate upstreams across branches for the site-level view
         all_ups = []
@@ -110,6 +148,8 @@ def _parse_routes(routes):
                 "hosts": hosts,
                 "paths": branches,
                 "upstreams": all_ups,
+                "transport": site_transport or None,
+                "load_balancing": site_lb or None,
             })
     return out
 
@@ -264,6 +304,8 @@ async def refresh(force: bool = False):
                 "tls": tls,
                 "uptime_24h": uptime_24h,
                 "sparkline": sparkline,
+                "transport": s.get("transport"),
+                "load_balancing": s.get("load_balancing"),
             })
 
         _state["sites"] = sites

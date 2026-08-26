@@ -207,3 +207,37 @@ def test_group_hosts_by_tld():
     assert by_group["lope.lan"] == ["ha.lope.lan"]
     # sorted by group name
     assert [g["group"] for g in groups] == ["kaaber.ee", "lope.ee", "lope.lan"]
+
+
+def test_parse_transport_timeouts():
+    routes = [{
+        "match": [{"host": ["stream.lope.ee"]}],
+        "handle": [{
+            "handler": "reverse_proxy",
+            "upstreams": [{"dial": "192.168.1.50:8080"}],
+            "transport": {
+                "protocol": "http",
+                "dial_timeout": "30s",
+                "read_timeout": "3600s",
+                "response_header_timeout": "15s",
+                "keepalive": {
+                    "idle_timeout": "120s"
+                }
+            },
+            "load_balancing": {
+                "selection_policy": {"policy": "least_conn"},
+                "retries": 3
+            }
+        }],
+    }]
+    out = _parse_routes(routes)
+    assert len(out) == 1
+    s = out[0]
+    assert s["transport"] is not None
+    assert s["transport"]["dial_timeout"] == "30s"
+    assert s["transport"]["read_timeout"] == "3600s"
+    assert s["transport"]["response_header_timeout"] == "15s"
+    assert s["transport"]["keepalive_idle"] == "120s"
+    assert s["load_balancing"] is not None
+    assert s["load_balancing"]["policy"] == "least_conn"
+    assert s["load_balancing"]["retries"] == 3

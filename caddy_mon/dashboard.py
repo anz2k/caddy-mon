@@ -165,6 +165,25 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
         <span>{tls_text}</span>
       </div>"""
 
+    # Transport Timeouts (timeouts & keepalive)
+    tr = s.get("transport") or {}
+    tr_parts = []
+    if tr.get("dial_timeout"):
+        tr_parts.append(f"dial {tr['dial_timeout']}")
+    if tr.get("read_timeout"):
+        tr_parts.append(f"read {tr['read_timeout']}")
+    if tr.get("response_header_timeout"):
+        tr_parts.append(f"resp {tr['response_header_timeout']}")
+
+    tr_html = ""
+    if tr_parts:
+        tr_text = " · ".join(tr_parts)
+        tr_html = f"""
+          <div class="flex items-center gap-2 text-xs font-mono text-outline">
+            <span class="material-symbols-outlined text-[14px]">timer</span>
+            <span>{escape(tr_text)}</span>
+          </div>"""
+
     maint_btn_text = "End Maint" if is_maint else "Maint"
     search_keywords = escape(f"{primary} {' '.join(aliases)} {' '.join(upstream_search_text)}".lower())
 
@@ -217,6 +236,7 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
           {up_html}
           {log_html}
           {tls_html}
+          {tr_html}
         </div>
 
         <!-- 4. Card Bottom Actions Toolbar -->
@@ -464,6 +484,12 @@ async def dashboard(request: Request):
         <div>
           <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-outline mb-2">Upstream Endpoints</h4>
           <div id="modal-upstreams" class="flex flex-col gap-2"></div>
+        </div>
+
+        <!-- Transport & Connection Parameters -->
+        <div id="modal-transport-container" class="hidden">
+          <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-outline mb-2">Transport & Connection Settings</h4>
+          <div id="modal-transport" class="bg-[#1e293b] border border-white/10 rounded-lg p-3 grid grid-cols-2 md:grid-cols-3 gap-3 font-mono text-xs"></div>
         </div>
 
         <!-- Recent Logs Table -->
@@ -843,6 +869,26 @@ async def dashboard(request: Request):
             </div>`;
         }});
         document.getElementById('modal-upstreams').innerHTML = upHtml || '<span class="text-outline">No upstream endpoints configured</span>';
+
+        // Transport & Load Balancing Settings
+        const tr = site?.transport || {{}};
+        const lb = site?.load_balancing || {{}};
+        let trHtml = '';
+        if (tr.dial_timeout) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Dial Timeout</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(tr.dial_timeout)}}</span></div>`;
+        if (tr.read_timeout) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Read Timeout</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(tr.read_timeout)}}</span></div>`;
+        if (tr.write_timeout) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Write Timeout</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(tr.write_timeout)}}</span></div>`;
+        if (tr.response_header_timeout) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Header Timeout</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(tr.response_header_timeout)}}</span></div>`;
+        if (tr.keepalive_idle) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Keepalive Idle</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(tr.keepalive_idle)}}</span></div>`;
+        if (lb.policy) trHtml += `<div><span class="text-outline text-[10px] uppercase block">LB Policy</span><span class="text-primary font-semibold font-mono">${{escapeHtml(lb.policy)}}</span></div>`;
+        if (lb.retries !== undefined) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Retries</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(String(lb.retries))}}</span></div>`;
+
+        const trContainer = document.getElementById('modal-transport-container');
+        if (trHtml) {{
+          document.getElementById('modal-transport').innerHTML = trHtml;
+          trContainer.classList.remove('hidden');
+        }} else {{
+          trContainer.classList.add('hidden');
+        }}
 
         // Recent Logs
         let logRows = '';

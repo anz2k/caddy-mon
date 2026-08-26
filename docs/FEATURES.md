@@ -161,6 +161,11 @@ multiple servers (e.g. for different listen ports or site groups).
 **What it adds:** Automated scanning of Caddy's ACME certificate storage (`/caddy-data` and `/data/caddy/certificates`) in addition to manual certs (`/caddy-certs`).
 **How it works:** Recursively parses X.509 certificate PEMs, matching domain SANs and calculating expiration dates for Let's Encrypt, ZeroSSL, and custom certificates.
 
+## Transport Timeouts & Connection Insights
+
+**What it adds:** Extraction and visual display of Caddy reverse-proxy transport timeouts (`dial_timeout`, `read_timeout`, `write_timeout`, `response_header_timeout`, `keepalive`) and load-balancing parameters on dashboard cards and inside the Deep-Dive modal.
+**How it works:** `caddy_mon.caddy_source` inspects the `transport` block in each Caddy reverse-proxy handler, revealing configured timeout thresholds (e.g. `dial 30s · read 3600s`) so operators immediately understand connection pooling and timeout behaviors for long-lived WebSockets, SSE streams, or standard APIs.
+
 ## Dynamic Route CRUD & Deployment
 
 **What it adds:** An interactive "➕ Add Site" modal on the dashboard and route deletion controls (`POST /api/routes`, `DELETE /api/routes/{host}`).
