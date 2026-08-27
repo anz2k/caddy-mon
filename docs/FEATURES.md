@@ -164,7 +164,14 @@ multiple servers (e.g. for different listen ports or site groups).
 ## Transport Timeouts & Connection Insights
 
 **What it adds:** Extraction and visual display of Caddy reverse-proxy transport timeouts (`dial_timeout`, `read_timeout`, `write_timeout`, `response_header_timeout`, `keepalive`) and load-balancing parameters on dashboard cards and inside the Deep-Dive modal.
-**How it works:** `caddy_mon.caddy_source` inspects the `transport` block in each Caddy reverse-proxy handler, revealing configured timeout thresholds (e.g. `dial 30s · read 3600s`) so operators immediately understand connection pooling and timeout behaviors for long-lived WebSockets, SSE streams, or standard APIs.
+
+**How it works:** `caddy_mon.caddy_source` inspects the `transport` block in each Caddy reverse-proxy handler. Caddy stores durations in the admin-API JSON as Go `time.Duration` nanoseconds (e.g. `3600000000000`), so `caddy_source._fmt_duration()` converts them into compact human-readable strings (`1h`, `30s`, `500ms`) before display. The card shows e.g. `⏱️ dial 1h · read 1h` and the Deep-Dive modal lists all connection parameters under "Transport & Connection Settings", so operators immediately understand timeout behaviors for long-lived WebSockets, SSE streams, or standard APIs. Routes without an explicit `transport` block show no indicator (Caddy defaults apply).
+
+## Per-Upstream Health Status
+
+**What it adds:** Each upstream dial within a site is shown with its own Caddy health badge (`Caddy healthy` / `Caddy unhealthy` / `Caddy ?`) rather than only a single site-level alive/dead state.
+
+**How it works:** `caddy_source._parse_healthy()` reads the Caddy `/metrics` gauge `caddy_reverse_proxy_upstreams_healthy{upstream="IP:port"}` — one value per upstream — and `refresh()` attaches that value to each upstream in `up_probes`. The dashboard renders a colored badge next to every upstream address on the card, so when a site has multiple upstreams you can see exactly which one is down (e.g. 2 of 3 healthy) instead of only the aggregate site status.
 
 ## Dynamic Route CRUD & Deployment
 
