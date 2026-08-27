@@ -77,3 +77,34 @@ def test_security_analytics_aggregates_top_clients_and_status_codes():
         assert len(suspicious) == 2
         assert suspicious[0]["status"] == 404
         assert suspicious[1]["status"] == 429
+        assert "proxy_audit" in res
+
+
+def test_audit_trusted_proxies_no_traffic():
+    audit = security_page.audit_trusted_proxies([], 0)
+    assert audit["status"] == "healthy"
+    assert audit["badge_label"] == "NO TRAFFIC"
+
+
+def test_audit_trusted_proxies_healthy_diverse():
+    top_clients = [
+        {"ip": "194.126.100.5", "requests": 15, "is_lan": False},
+        {"ip": "84.50.20.10", "requests": 12, "is_lan": False},
+        {"ip": "192.168.1.50", "requests": 10, "is_lan": True},
+    ]
+    audit = security_page.audit_trusted_proxies(top_clients, 37)
+    assert audit["status"] == "healthy"
+    assert audit["badge_label"] == "REAL IPS VERIFIED"
+    assert audit["recommendation"] is None
+
+
+def test_audit_trusted_proxies_detects_cloudflare_masking():
+    top_clients = [
+        {"ip": "172.71.99.10", "requests": 95, "is_lan": False},
+        {"ip": "84.50.20.10", "requests": 5, "is_lan": False},
+    ]
+    audit = security_page.audit_trusted_proxies(top_clients, 100)
+    assert audit["status"] == "warning"
+    assert audit["badge_label"] == "PROXY MASKING DETECTED"
+    assert "trusted_proxies" in audit["recommendation"]
+    assert audit["top_ip_share_pct"] == 95.0

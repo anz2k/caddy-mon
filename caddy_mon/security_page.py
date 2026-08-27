@@ -35,8 +35,87 @@ def is_lan_ip(ip: str) -> bool:
     return False
 
 
+def is_known_proxy_ip(ip: str) -> tuple[bool, str]:
+    """Check if an IP address belongs to known reverse-proxy CIDRs (Cloudflare, Docker NAT)."""
+    ip = ip.strip().lower()
+    # Cloudflare IPv4 ranges / prefixes
+    cf_prefixes = (
+        "173.245.", "103.21.", "103.22.", "103.31.", "141.101.", "108.162.",
+        "190.93.", "188.114.", "197.234.", "198.41.", "162.158.", "104.16.",
+        "104.17.", "104.18.", "104.19.", "104.20.", "104.21.", "104.22.",
+        "104.23.", "104.24.", "104.25.", "104.26.", "104.27.", "104.28.",
+        "172.64.", "172.65.", "172.66.", "172.67.", "172.68.", "172.69.",
+        "172.70.", "172.71.", "131.0.72."
+    )
+    for p in cf_prefixes:
+        if ip.startswith(p):
+            return True, "Cloudflare CDN / Proxy"
+
+    # Docker bridge gateway IPs
+    if ip in ("172.17.0.1", "172.18.0.1", "172.19.0.1", "172.20.0.1", "172.21.0.1", "10.0.2.2"):
+        return True, "Docker Bridge Gateway"
+
+    return False, ""
+
+
+def audit_trusted_proxies(top_clients: List[Dict[str, Any]], total_requests: int) -> Dict[str, Any]:
+    """Audit client IP distribution for unconfigured reverse-proxy / CDN masking."""
+    if total_requests == 0 or not top_clients:
+        return {
+            "status": "healthy",
+            "title": "No Traffic Data",
+            "badge_label": "NO TRAFFIC",
+            "badge_class": "bg-surface-variant text-on-surface-variant",
+            "icon": "info",
+            "icon_color": "text-outline",
+            "summary": "No access logs recorded in the selected time window.",
+            "recommendation": None,
+            "unique_ips": 0,
+            "top_ip": "-",
+            "top_ip_share_pct": 0.0,
+        }
+
+    top = top_clients[0]
+    top_ip = top["ip"]
+    top_reqs = top["requests"]
+    top_share = round((top_reqs / total_requests) * 100.0, 1) if total_requests > 0 else 0.0
+    is_proxy, proxy_name = is_known_proxy_ip(top_ip)
+
+    # If traffic is dominated (>80%) by a known proxy or single gateway IP
+    if total_requests >= 10 and top_share >= 80.0 and (is_proxy or top["is_lan"]):
+        desc = f"{top_share}% of all incoming requests originate from a single IP ({top_ip}{f' - {proxy_name}' if is_proxy else ''})."
+        rec = "Consider adding <code>trusted_proxies &lt;proxy-cidrs&gt;</code> to your Caddyfile reverse_proxy blocks so Caddy parses real visitor IPs from the <code>X-Forwarded-For</code> header."
+        return {
+            "status": "warning",
+            "title": "Potential Reverse-Proxy Masking Detected",
+            "badge_label": "PROXY MASKING DETECTED",
+            "badge_class": "bg-status-maint/20 text-status-maint border border-status-maint/40",
+            "icon": "warning",
+            "icon_color": "text-status-maint",
+            "summary": f"{desc} Real client IPs may be masked in access logs.",
+            "recommendation": rec,
+            "unique_ips": len(top_clients),
+            "top_ip": top_ip,
+            "top_ip_share_pct": top_share,
+        }
+
+    return {
+        "status": "healthy",
+        "title": "Direct Client IPs Verified",
+        "badge_label": "REAL IPS VERIFIED",
+        "badge_class": "bg-status-alive/20 text-status-alive border border-status-alive/40",
+        "icon": "verified_user",
+        "icon_color": "text-status-alive",
+        "summary": f"Verified diverse client traffic across {len(top_clients)} unique IP addresses. No proxy IP masking detected.",
+        "recommendation": None,
+        "unique_ips": len(top_clients),
+        "top_ip": top_ip,
+        "top_ip_share_pct": top_share,
+    }
+
+
 def security_analytics(window: int = 3600) -> Dict[str, Any]:
-    """Aggregate traffic, status codes, top client IPs, and suspicious requests."""
+    """Aggregate traffic, status codes, top client IPs, suspicious requests, and proxy audit."""
     ingest_logs()
     now = time.time()
     cutoff = now - window
@@ -113,13 +192,17 @@ def security_analytics(window: int = 3600) -> Dict[str, Any]:
             "is_lan": data["is_lan"],
         })
     top_clients.sort(key=lambda x: x["requests"], reverse=True)
+    total_reqs = sum(c["requests"] for c in clients.values())
+
+    proxy_audit = audit_trusted_proxies(top_clients, total_reqs)
 
     return {
         "window_seconds": window,
-        "total_requests": sum(c["requests"] for c in clients.values()),
+        "total_requests": total_reqs,
         "status_distribution": status_dist,
         "top_clients": top_clients[:30],
         "suspicious_requests": suspicious[:50],
+        "proxy_audit": proxy_audit,
     }
 
 
@@ -129,6 +212,36 @@ def security_page(request: Request, window: int = 3600) -> HTMLResponse:
     dist = data["status_distribution"]
     top_clients = data["top_clients"]
     suspicious = data["suspicious_requests"]
+    audit = data["proxy_audit"]
+
+    # Render proxy audit alert box
+    audit_border = "border-status-maint/40 bg-status-maint/5" if audit["status"] == "warning" else "border-white/10 bg-[#1e293b]"
+    rec_html = f'<p class="text-[11px] text-on-surface-variant font-mono bg-[#0f172a] p-2.5 rounded border border-white/5 mt-1">{audit["recommendation"]}</p>' if audit.get("recommendation") else ""
+
+    audit_widget = f"""
+    <section class="{audit_border} border rounded-lg p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div class="flex items-start gap-3">
+        <span class="material-symbols-outlined text-2xl {audit['icon_color']} mt-0.5">{audit['icon']}</span>
+        <div class="flex flex-col gap-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h3 class="text-sm font-mono font-bold text-on-surface">{escape(audit['title'])}</h3>
+            <span class="{audit['badge_class']} px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider">{escape(audit['badge_label'])}</span>
+          </div>
+          <p class="text-xs text-on-surface-variant font-sans">{audit['summary']}</p>
+          {rec_html}
+        </div>
+      </div>
+      <div class="flex items-center gap-4 font-mono text-xs text-outline self-end md:self-center flex-shrink-0">
+        <div class="flex flex-col text-right">
+          <span class="text-[10px] uppercase">Unique IPs</span>
+          <span class="text-on-surface font-bold text-sm">{audit['unique_ips']}</span>
+        </div>
+        <div class="flex flex-col text-right">
+          <span class="text-[10px] uppercase">Top IP Share</span>
+          <span class="text-on-surface font-bold text-sm">{audit['top_ip_share_pct']}%</span>
+        </div>
+      </div>
+    </section>"""
 
     # Render top client rows
     client_rows = ""
@@ -257,6 +370,9 @@ def security_page(request: Request, window: int = 3600) -> HTMLResponse:
         <span class="text-2xl font-bold font-mono text-status-down">{dist['5xx']}</span>
       </div>
     </div>
+
+    <!-- Trusted Proxies Diagnostic Audit -->
+    {audit_widget}
 
     <!-- Top Clients Table -->
     <section class="flex flex-col gap-3">

@@ -173,6 +173,12 @@ multiple servers (e.g. for different listen ports or site groups).
 
 **How it works:** `caddy_source._parse_healthy()` reads the Caddy `/metrics` gauge `caddy_reverse_proxy_upstreams_healthy{upstream="IP:port"}` — one value per upstream — and `refresh()` attaches that value to each upstream in `up_probes`. The dashboard renders a colored badge next to every upstream address on the card, so when a site has multiple upstreams you can see exactly which one is down (e.g. 2 of 3 healthy) instead of only the aggregate site status.
 
+## Trusted Proxies & Client IP Audit
+
+**What it adds:** Automated proxy diagnostic analyzer on the `/security` dashboard inspecting traffic distribution to detect reverse-proxy and CDN masking (e.g., Cloudflare, Docker NAT gateways).
+
+**How it works:** `caddy_mon.security_page` evaluates incoming client IP concentration. If traffic is heavily dominated (>80%) by a known proxy network or Docker bridge gateway without client IP forwarding, it flags a warning and recommends the exact `trusted_proxies` configuration needed in Caddyfile to restore authentic visitor IPs via `X-Forwarded-For`.
+
 ## Dynamic Route CRUD & Deployment
 
 **What it adds:** An interactive "➕ Add Site" modal on the dashboard and route deletion controls (`POST /api/routes`, `DELETE /api/routes/{host}`).

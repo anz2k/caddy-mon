@@ -18,6 +18,7 @@ No Grafana, no Prometheus, no external TSDB — just Caddy, which you already ru
 - **Automated ACME & Custom TLS Discovery** — monitors Let's Encrypt / ZeroSSL automatic certificates alongside manual certs with expiration countdowns
 - **Public Status Page & RSS Feed** — clean public status overview (`/status`) with 30-day uptime history bars and RSS 2.0 incident feed (`/status/feed.xml`)
 - **Security & Client Analytics** — top client IPs, 4xx/429 rate limit events, status code distribution, and LAN/WAN classification at `/security`
+- **Trusted Proxies & Client IP Audit** — diagnostic analyzer on `/security` detecting reverse-proxy/CDN IP masking (e.g. Cloudflare / Docker NAT) and suggesting `trusted_proxies` configuration
 - **Caddy Control Plane & Config Inspector** — active JSON configuration viewer with download and zero-downtime reload (`/caddy/config`)
 - **On-Demand Diagnostics** — instant "⚡ Test" probe button per card measuring status code, response headers, and latency
 - **Maintenance Mode** — toggle planned maintenance (`🛠️ Maint`) per site to suppress DOWN alerts during maintenance windows
