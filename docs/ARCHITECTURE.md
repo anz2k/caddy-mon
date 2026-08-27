@@ -68,6 +68,8 @@ ports or site groups). All are merged into the dashboard/topology view.
 | `POST /api/caddy/reload` | Trigger zero-downtime configuration reload via Caddy admin API | Protected |
 | `GET /topology` | HTML SVG route map (host → path → Caddy proxy → upstream) | Protected |
 | `GET /api/topology` | JSON: `{nodes[], edges[]}` for the route map | Protected |
+| `GET /analytics` | HTML proxy-level traffic and visitor analytics dashboard | Protected |
+| `GET /api/analytics` | JSON: `{summary, timeline[], top_paths[], top_referrers[], browsers[], os_list[], devices[], bots[], domains[]}` | Protected |
 | `GET /logs` | HTML log analytics (per-host 5xx/error%, recent 5xx) | Protected |
 | `GET /api/logs` | JSON: `{window_seconds, rows[], recent_5xx[]}` | Protected |
 | `GET /tls` | HTML TLS certificate expiry table | Protected |
@@ -117,6 +119,7 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 | `caddy_mon/tls_source.py` | TLS cert parsing: automated ACME & manual cert discovery, expiry tracking |
 | `caddy_mon/dashboard.py` | Modern Tailwind dashboard with search, quick filters, sorting, Site Inspector, and CRUD modals |
 | `caddy_mon/topology.py` | Route-map API + SVG HTML page with transforms & rewrites (`/topology`, `/api/topology`) |
+| `caddy_mon/analytics_page.py` | Server-side traffic and visitor analytics UI + JSON API (`/analytics`, `/api/analytics`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
 | `caddy_mon/tls_page.py` | TLS expiry HTML page + `/api/tls` |
-| `tests/` | Comprehensive unit tests (63 unit tests across 14 test suites) + live Caddy integration tests |
+| `tests/` | Comprehensive unit tests (71 unit tests across 15 test suites) + live Caddy integration tests |

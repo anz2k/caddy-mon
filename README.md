@@ -14,7 +14,8 @@ No Grafana, no Prometheus, no external TSDB — just Caddy, which you already ru
 - **Live Search & Status Filtering** — instant search (`/` shortcut), quick status filter pills (`All`, `Alive`, `Down`, `Maint`, `>100ms`), and multi-attribute sorting
 - **Transport Timeouts & Connection Insights** — parses and displays `dial_timeout`, `read_timeout`, and keepalive parameters per route (Caddy nanoseconds converted to human-readable `1h`/`30s`/`500ms`)
 - **Per-Upstream Health Status** — each upstream dial shows its own Caddy health badge (`Caddy healthy` / `Caddy unhealthy` / `Caddy ?`), so you see exactly which upstream is down in a multi-upstream site
-- **Site Deep-Dive Inspector Modal** — click any card to inspect 24h/7d latency stats (min/avg/max), host-specific access logs, and incident timelines
+- **Site Deep-Dive Inspector Modal** — click any card to inspect 24h/7d latency stats (min/avg/max), 24h visitor totals, host-specific access logs, and incident timelines
+- **Traffic & Visitor Analytics** — server-side, privacy-friendly analytics at `/analytics` (unique visitors, pageviews, bandwidth, top paths, referrers, browsers/OS, human vs bot classification, and hourly SVG traffic chart)
 - **Automated ACME & Custom TLS Discovery** — monitors Let's Encrypt / ZeroSSL automatic certificates alongside manual certs with expiration countdowns
 - **Public Status Page & RSS Feed** — clean public status overview (`/status`) with 30-day uptime history bars and RSS 2.0 incident feed (`/status/feed.xml`)
 - **Security & Client Analytics** — top client IPs, 4xx/429 rate limit events, status code distribution, and LAN/WAN classification at `/security`

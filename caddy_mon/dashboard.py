@@ -396,6 +396,7 @@ async def dashboard(request: Request):
     <nav class="flex gap-6 mt-2 overflow-x-auto pb-1 no-scrollbar border-b border-white/5 text-xs font-bold uppercase tracking-wider font-sans">
       <a class="text-primary border-b-2 border-primary pb-2 whitespace-nowrap" href="/">Dashboard</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/topology">Topology</a>
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/analytics">Analytics</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/logs">Logs</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/security">Security</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/tls">TLS</a>
@@ -496,6 +497,34 @@ async def dashboard(request: Request):
         <div id="modal-transforms-container" class="hidden">
           <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-outline mb-2">Request Transforms & Headers</h4>
           <div id="modal-transforms" class="bg-[#1e293b] border border-white/10 rounded-lg p-3 flex flex-col gap-2 font-mono text-xs"></div>
+        </div>
+
+        <!-- 24h Traffic & Visitor Summary -->
+        <div id="modal-traffic-container">
+          <div class="flex justify-between items-center mb-2">
+            <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-outline">24h Traffic & Visitors</h4>
+            <a id="modal-analytics-link" href="/analytics" class="text-primary hover:underline text-[11px] font-mono flex items-center gap-1">
+              <span>Full Analytics</span> <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+            </a>
+          </div>
+          <div class="bg-[#1e293b] border border-white/10 rounded-lg p-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+            <div>
+              <span class="text-outline text-[10px] uppercase block">Requests (24h)</span>
+              <span id="modal-traffic-reqs" class="text-primary font-bold text-sm">-</span>
+            </div>
+            <div>
+              <span class="text-outline text-[10px] uppercase block">Unique Visitors</span>
+              <span id="modal-traffic-visitors" class="text-status-alive font-bold text-sm">-</span>
+            </div>
+            <div>
+              <span class="text-outline text-[10px] uppercase block">Bandwidth</span>
+              <span id="modal-traffic-bytes" class="text-on-surface font-bold text-sm">-</span>
+            </div>
+            <div>
+              <span class="text-outline text-[10px] uppercase block">Human Share</span>
+              <span id="modal-traffic-human" class="text-sky-400 font-bold text-sm">-</span>
+            </div>
+          </div>
         </div>
 
         <!-- Recent Logs Table -->
@@ -919,6 +948,14 @@ async def dashboard(request: Request):
         }} else {{
           trfContainer.classList.add('hidden');
         }}
+
+        // 24h Traffic Summary
+        const trfSummary = data.traffic?.summary || {{}};
+        document.getElementById('modal-traffic-reqs').textContent = trfSummary.total_requests || '0';
+        document.getElementById('modal-traffic-visitors').textContent = trfSummary.unique_visitors || '0';
+        document.getElementById('modal-traffic-bytes').textContent = trfSummary.total_bytes_formatted || '0 B';
+        document.getElementById('modal-traffic-human').textContent = (trfSummary.human_pct !== undefined ? trfSummary.human_pct + '%' : '100%');
+        document.getElementById('modal-analytics-link').href = `/analytics`;
 
         // Recent Logs
         let logRows = '';

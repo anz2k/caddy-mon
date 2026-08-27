@@ -120,6 +120,27 @@ def init_db():
                 CREATE INDEX IF NOT EXISTS idx_snapshots_cfg_ts
                 ON config_snapshots(ts);
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS traffic_hourly (
+                    ts_hour REAL NOT NULL,
+                    host TEXT NOT NULL,
+                    requests INTEGER NOT NULL DEFAULT 0,
+                    unique_ips INTEGER NOT NULL DEFAULT 0,
+                    bytes_sent INTEGER NOT NULL DEFAULT 0,
+                    errors_4xx INTEGER NOT NULL DEFAULT 0,
+                    errors_5xx INTEGER NOT NULL DEFAULT 0,
+                    avg_duration_ms REAL NOT NULL DEFAULT 0.0,
+                    PRIMARY KEY (ts_hour, host)
+                );
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_traffic_ts
+                ON traffic_hourly(ts_hour);
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_traffic_host_ts
+                ON traffic_hourly(host, ts_hour);
+            """)
             conn.commit()
     except Exception as e:
         print(f"[caddy-mon] Warning: init_db encountered error: {e}")
@@ -291,13 +312,101 @@ def get_recent_incidents(limit: int = 20) -> List[Dict[str, Any]]:
         return []
 
 
+def upsert_hourly_traffic(
+    ts_hour: float,
+    host: str,
+    requests: int,
+    unique_ips: int,
+    bytes_sent: int,
+    errors_4xx: int,
+    errors_5xx: int,
+    avg_duration_ms: float,
+):
+    """Upsert hourly traffic summary record."""
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO traffic_hourly (
+                    ts_hour, host, requests, unique_ips, bytes_sent, errors_4xx, errors_5xx, avg_duration_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(ts_hour, host) DO UPDATE SET
+                    requests = excluded.requests,
+                    unique_ips = excluded.unique_ips,
+                    bytes_sent = excluded.bytes_sent,
+                    errors_4xx = excluded.errors_4xx,
+                    errors_5xx = excluded.errors_5xx,
+                    avg_duration_ms = excluded.avg_duration_ms
+                """,
+                (
+                    ts_hour,
+                    host,
+                    requests,
+                    unique_ips,
+                    bytes_sent,
+                    errors_4xx,
+                    errors_5xx,
+                    avg_duration_ms,
+                ),
+            )
+            conn.commit()
+    except sqlite3.Error:
+        pass
+
+
+def get_traffic_history(
+    host: Optional[str] = None,
+    since_ts: float = 0.0,
+) -> List[Dict[str, Any]]:
+    """Fetch hourly traffic records, optionally filtered by host and start timestamp."""
+    try:
+        with get_connection() as conn:
+            if host:
+                cur = conn.execute(
+                    """
+                    SELECT ts_hour, host, requests, unique_ips, bytes_sent, errors_4xx, errors_5xx, avg_duration_ms
+                    FROM traffic_hourly
+                    WHERE host = ? AND ts_hour >= ?
+                    ORDER BY ts_hour ASC
+                    """,
+                    (host, since_ts),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    SELECT ts_hour, host, requests, unique_ips, bytes_sent, errors_4xx, errors_5xx, avg_duration_ms
+                    FROM traffic_hourly
+                    WHERE ts_hour >= ?
+                    ORDER BY ts_hour ASC
+                    """,
+                    (since_ts,),
+                )
+            return [
+                {
+                    "ts_hour": r["ts_hour"],
+                    "host": r["host"],
+                    "requests": r["requests"],
+                    "unique_ips": r["unique_ips"],
+                    "bytes_sent": r["bytes_sent"],
+                    "errors_4xx": r["errors_4xx"],
+                    "errors_5xx": r["errors_5xx"],
+                    "avg_duration_ms": r["avg_duration_ms"],
+                }
+                for r in cur.fetchall()
+            ]
+    except sqlite3.Error:
+        return []
+
+
 def prune_old_history(days: int = HISTORY_RETENTION_DAYS, now: Optional[float] = None):
-    """Delete snapshot records older than `days` to keep database size bounded."""
+    """Delete snapshot records older than `days` and traffic older than 30 days to keep database bounded."""
     ts_now = now or time.time()
     cutoff = ts_now - (days * 86400.0)
+    traffic_cutoff = ts_now - (30 * 86400.0)
     try:
         with get_connection() as conn:
             conn.execute("DELETE FROM site_snapshots WHERE ts < ?", (cutoff,))
+            conn.execute("DELETE FROM traffic_hourly WHERE ts_hour < ?", (traffic_cutoff,))
             conn.commit()
     except sqlite3.Error:
         pass

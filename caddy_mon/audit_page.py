@@ -136,6 +136,7 @@ def audit_page(request: Request) -> HTMLResponse:
     <nav class="flex gap-6 mt-4 overflow-x-auto pb-1 border-b border-white/5 text-xs font-bold uppercase tracking-wider font-sans">
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/">Dashboard</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/topology">Topology</a>
+      <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/analytics">Analytics</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/logs">Logs</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/security">Security</a>
       <a class="text-on-surface-variant hover:text-primary transition-colors pb-2 whitespace-nowrap" href="/tls">TLS</a>

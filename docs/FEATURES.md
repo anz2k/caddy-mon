@@ -185,6 +185,12 @@ multiple servers (e.g. for different listen ports or site groups).
 
 **How it works:** `caddy_mon.caddy_source` traverses nested Caddy handler trees to detect `rewrite`, `headers`, and `handle_response` blocks. The topology view highlights transformed proxy hops with badges and SVG tooltips, and the site inspector provides a dedicated section showing all active transformation rules.
 
+## Traffic & Visitor Analytics
+
+**What it adds:** A server-side, privacy-friendly traffic and visitor analytics dashboard at `/analytics` (JSON at `/api/analytics`) and 24h visitor metrics integrated into each site's Deep-Dive modal.
+
+**How it works:** `caddy_mon.log_source` parses Caddy JSON access logs to extract client IPs, request URIs, referrers, User-Agent strings, and response payloads. The engine categorizes traffic into human visitors vs search engine crawlers / bots (`Googlebot`, `Bingbot`, scanners), identifies top visited paths, referrers, browsers (Chrome, Safari, Firefox), and operating systems (Windows, macOS, iOS, Android). Hourly rollups are stored in SQLite (`traffic_hourly`), and the UI renders KPI cards, an hourly SVG timeline chart, and domain breakdown tables.
+
 ## Dynamic Route CRUD & Deployment
 
 **What it adds:** An interactive "➕ Add Site" modal on the dashboard and route deletion controls (`POST /api/routes`, `DELETE /api/routes/{host}`).

@@ -38,6 +38,7 @@ from caddy_mon.audit_page import audit_page
 from caddy_mon.topology import topology, api_topology
 from caddy_mon.logs_page import logs_page, api_logs
 from caddy_mon.tls_page import tls_page, api_tls
+from caddy_mon.analytics_page import analytics, api_analytics, get_traffic_analytics
 
 
 @asynccontextmanager
@@ -135,6 +136,7 @@ async def api_site_details_route(host: str):
     recent_logs = get_host_recent_logs(all_hosts, limit=40)
     incidents = get_host_incidents(host, limit=15)
     maintenance_map = get_all_maintenance()
+    traffic_summary = get_traffic_analytics(window=86400, host_filter=host)
 
     return {
         "host": host,
@@ -143,6 +145,7 @@ async def api_site_details_route(host: str):
         "recent_logs": recent_logs,
         "incidents": incidents,
         "maintenance": maintenance_map.get(host),
+        "traffic": traffic_summary,
     }
 
 
@@ -292,6 +295,18 @@ async def topology_route(request: Request):
 @app.get("/api/topology", dependencies=[Depends(require_auth)])
 async def api_topology_route():
     return api_topology()
+
+
+@app.get("/analytics", response_class=HTMLResponse, dependencies=[Depends(require_auth)])
+async def analytics_route(request: Request):
+    """Proxy-level traffic and visitor analytics dashboard view."""
+    return await analytics(request)
+
+
+@app.get("/api/analytics", dependencies=[Depends(require_auth)])
+async def api_analytics_route(window: int = 86400, host: Optional[str] = None):
+    """Traffic and visitor analytics JSON API."""
+    return api_analytics(window=window, host=host)
 
 
 @app.get("/logs", response_class=HTMLResponse, dependencies=[Depends(require_auth)])

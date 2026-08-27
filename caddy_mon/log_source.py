@@ -74,6 +74,96 @@ def _get_active_log_path() -> Optional[str]:
     return None
 
 
+def parse_user_agent(ua: Optional[str]) -> Dict[str, str]:
+    """Parse User-Agent string into category, browser, OS, device, and bot name."""
+    if not ua:
+        return {"category": "Unknown", "browser": "Unknown", "os": "Unknown", "device": "Unknown", "bot": None}
+
+    ua_lower = ua.lower()
+
+    # Bot detection
+    bot_signatures = [
+        ("Googlebot", ["googlebot", "google-inspectiontool"]),
+        ("Bingbot", ["bingbot", "bingpreview"]),
+        ("Yandex", ["yandexbot", "yandeximages"]),
+        ("DuckDuckBot", ["duckduckbot", "duckduckgo"]),
+        ("Baiduspider", ["baiduspider"]),
+        ("AhrefsBot", ["ahrefsbot"]),
+        ("SemrushBot", ["semrushbot"]),
+        ("Applebot", ["applebot"]),
+        ("PetalBot", ["petalbot"]),
+        ("UptimeRobot", ["uptimerobot"]),
+        ("Scanner/Tool", ["sqlmap", "nikto", "nmap", "masscan", "zgrab", "gobuster", "curl", "python-requests", "go-http-client", "wget", "postman"]),
+        ("Bot/Crawler", ["bot", "spider", "crawl", "slurp", "mediapartners-google"]),
+    ]
+
+    for bot_name, tokens in bot_signatures:
+        if any(tok in ua_lower for tok in tokens):
+            return {
+                "category": "Bot",
+                "browser": bot_name,
+                "os": "Bot",
+                "device": "Bot",
+                "bot": bot_name,
+            }
+
+    # Browser detection
+    browser = "Other"
+    if "edg/" in ua_lower or "edge/" in ua_lower:
+        browser = "Edge"
+    elif "opr/" in ua_lower or "opera" in ua_lower:
+        browser = "Opera"
+    elif "chrome/" in ua_lower or "crios/" in ua_lower:
+        browser = "Chrome"
+    elif "firefox/" in ua_lower or "fxios/" in ua_lower:
+        browser = "Firefox"
+    elif "safari/" in ua_lower and "chrome/" not in ua_lower:
+        browser = "Safari"
+
+    # OS / Platform detection
+    os_name = "Other"
+    device = "Desktop"
+    if "iphone" in ua_lower or "ipad" in ua_lower or "ipod" in ua_lower:
+        os_name = "iOS"
+        device = "Mobile"
+    elif "android" in ua_lower:
+        os_name = "Android"
+        device = "Mobile"
+    elif "windows" in ua_lower:
+        os_name = "Windows"
+    elif "macintosh" in ua_lower or "mac os x" in ua_lower:
+        os_name = "macOS"
+    elif "linux" in ua_lower:
+        os_name = "Linux"
+
+    if "mobile" in ua_lower:
+        device = "Mobile"
+
+    return {
+        "category": "Human",
+        "browser": browser,
+        "os": os_name,
+        "device": device,
+        "bot": None,
+    }
+
+
+def parse_referer(ref: Optional[str]) -> str:
+    """Extract clean domain from Referer URL or return 'Direct / None'."""
+    if not ref:
+        return "Direct / None"
+    ref = ref.strip()
+    if not ref or ref in ("-", "null", "none"):
+        return "Direct / None"
+    try:
+        domain = ref.split("://", 1)[-1].split("/", 1)[0].split("?", 1)[0].split(":", 1)[0].lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain or "Direct / None"
+    except Exception:
+        return "Direct / None"
+
+
 def ingest_logs():
     """Read new lines from the Caddy access log, keep last ~5000 entries.
 
@@ -127,6 +217,25 @@ def ingest_logs():
                 if ":" in client_ip and client_ip.count(":") == 1:
                     client_ip = client_ip.split(":")[0]
 
+                headers = req.get("headers") or {}
+                ua_val = headers.get("User-Agent") or req.get("user_agent") or ""
+                if isinstance(ua_val, list):
+                    ua_str = ua_val[0] if ua_val else ""
+                else:
+                    ua_str = str(ua_val)
+
+                ref_val = headers.get("Referer") or ""
+                if isinstance(ref_val, list):
+                    ref_str = ref_val[0] if ref_val else ""
+                else:
+                    ref_str = str(ref_val)
+
+                size_bytes = rec.get("size") or rec.get("bytes_read") or 0
+                try:
+                    size_bytes = int(size_bytes)
+                except (ValueError, TypeError):
+                    size_bytes = 0
+
                 _LOG_CACHE.append({
                     "ts": ts,
                     "host": host,
@@ -136,6 +245,9 @@ def ingest_logs():
                     "client_ip": client_ip,
                     "status": rec.get("status"),
                     "duration": rec.get("duration"),
+                    "user_agent": ua_str,
+                    "referer": ref_str,
+                    "bytes": size_bytes,
                 })
     except PermissionError:
         if not _WARNED_PERMISSION:
