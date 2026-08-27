@@ -200,12 +200,32 @@ def _parse_routes(routes):
 
             routes_block = node.get("routes")
             if isinstance(routes_block, list):
+                sub_accum = dict(current_transforms)
                 for sub in routes_block:
                     sub_paths = []
                     for m in sub.get("match", []) or []:
                         for p in (m.get("path") or []):
                             sub_paths.append(p)
-                    walk(sub.get("handle"), sub_paths or inherited_paths, current_transforms)
+                    # Extract any transforms from sub handle before walking
+                    h = sub.get("handle")
+                    if isinstance(h, list):
+                        for hitem in h:
+                            if isinstance(hitem, dict):
+                                extracted = _extract_transforms(hitem)
+                                for k, v in extracted.items():
+                                    sub_accum.setdefault(k, [])
+                                    for item in v:
+                                        if item not in sub_accum[k]:
+                                            sub_accum[k].append(item)
+                    elif isinstance(h, dict):
+                        extracted = _extract_transforms(h)
+                        for k, v in extracted.items():
+                            sub_accum.setdefault(k, [])
+                            for item in v:
+                                if item not in sub_accum[k]:
+                                    sub_accum[k].append(item)
+
+                    walk(sub.get("handle"), sub_paths or inherited_paths, sub_accum)
             for k, v in node.items():
                 if isinstance(v, (dict, list)) and not any(
                     key in node for key in ("handle", "terminal", "routes", "subroutes")

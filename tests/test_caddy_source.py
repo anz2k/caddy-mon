@@ -284,3 +284,72 @@ def test_parse_transforms_rewrite_and_headers():
     assert any("X-Custom: true" in h for h in tr["headers_up"])
     assert any("Strict-Transport-Security: max-age=31536000" in h for h in tr["headers_down"])
     assert any("catch status [404, 500]" in hr for hr in tr["handle_response"])
+
+
+def test_parse_subroute_sequential_middleware():
+    """Caddyfile with uri strip_prefix + headers + reverse_proxy generates nested subroutes with sequential middleware."""
+    routes = [{
+        "match": [{"host": ["anne.kaaber.ee"]}],
+        "handle": [
+            {
+                "handler": "subroute",
+                "routes": [
+                    {
+                        "handle": [
+                            {
+                                "handler": "rewrite",
+                                "strip_path_prefix": "/test"
+                            }
+                        ]
+                    },
+                    {
+                        "handle": [
+                            {
+                                "handler": "headers",
+                                "response": {
+                                    "set": {
+                                        "Strict-Transport-Security": ["max-age=31536000"]
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "handle": [
+                            {
+                                "handler": "reverse_proxy",
+                                "headers": {
+                                    "request": {
+                                        "set": {
+                                            "X-Custom-Header": ["test-caddy-mon"]
+                                        }
+                                    }
+                                },
+                                "transport": {
+                                    "protocol": "http",
+                                    "dial_timeout": 5000000000,
+                                    "read_timeout": 3600000000000
+                                },
+                                "upstreams": [
+                                    {"dial": "192.168.1.7:3001"}
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }]
+    out = _parse_routes(routes)
+    assert len(out) == 1
+    s = out[0]
+    assert s["hosts"] == ["anne.kaaber.ee"]
+    assert s["upstreams"] == ["192.168.1.7:3001"]
+    assert s["transport"] is not None
+    assert s["transport"]["dial_timeout"] == "5s"
+    assert s["transport"]["read_timeout"] == "1h"
+    tr = s.get("transforms")
+    assert tr is not None
+    assert "strip /test" in tr["rewrites"]
+    assert any("X-Custom-Header: test-caddy-mon" in h for h in tr["headers_up"])
+    assert any("Strict-Transport-Security: max-age=31536000" in h for h in tr["headers_down"])
