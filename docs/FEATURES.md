@@ -179,6 +179,12 @@ multiple servers (e.g. for different listen ports or site groups).
 
 **How it works:** `caddy_mon.security_page` evaluates incoming client IP concentration. If traffic is heavily dominated (>80%) by a known proxy network or Docker bridge gateway without client IP forwarding, it flags a warning and recommends the exact `trusted_proxies` configuration needed in Caddyfile to restore authentic visitor IPs via `X-Forwarded-For`.
 
+## Request Transforms & Header Rules
+
+**What it adds:** Extraction and visual rendering of route path rewrites (`strip /api`, `uri -> /v1{path}`), custom upstream request headers (`header_up`), response headers (`header_down`), and fallback handlers (`handle_response`) on the `/topology` SVG map and in the Site Deep-Dive modal.
+
+**How it works:** `caddy_mon.caddy_source` traverses nested Caddy handler trees to detect `rewrite`, `headers`, and `handle_response` blocks. The topology view highlights transformed proxy hops with badges and SVG tooltips, and the site inspector provides a dedicated section showing all active transformation rules.
+
 ## Dynamic Route CRUD & Deployment
 
 **What it adds:** An interactive "➕ Add Site" modal on the dashboard and route deletion controls (`POST /api/routes`, `DELETE /api/routes/{host}`).

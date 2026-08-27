@@ -25,7 +25,7 @@ No Grafana, no Prometheus, no external TSDB — just Caddy, which you already ru
 - **Optional Authentication** — HTTP Basic Auth (`AUTH_USER`/`AUTH_PASSWORD`) protecting admin routes while keeping `/status` public
 - **24h Uptime & Sparklines** — rolling 24h uptime % badge and mini SVG latency trendlines per card
 - **Incident alerting** — automatic Telegram and Webhook alerts when sites go DOWN or RECOVER
-- **Route topology** — SVG map of host → path → Caddy proxy → upstream (at `/topology`), supports path-based routing and multi-upstream
+- **Route Topology & Transforms** — SVG map of host → path → Caddy proxy → upstream (at `/topology`) with inline path rewrites (`strip /api`, `rewrite -> ...`) and custom headers (`header_up`/`header_down`)
 - **Multi-server Caddy** — reads routes from all Caddy HTTP servers (srv0, srv1, ...), not just srv0
 - **Combined health** — Caddy `healthy` metric + self-probe; connection-refused overrides a stale healthy=1
 - **Log analytics** — per-host request/5xx/error% over a time window (compact line on each dashboard card + full view at `/logs`, JSON at `/api/logs`)

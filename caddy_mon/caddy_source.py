@@ -70,16 +70,94 @@ async def _get_json(path: str):
         return {"_error": str(e)[:120]}
 
 
-def _parse_routes(routes):
-    """Return list of {hosts:[...], paths:[...], upstreams:[...], transport: {...}, load_balancing: {...}}.
+def _extract_transforms(node: dict) -> dict:
+    """Extract rewrite, header modifications, and handle_response rules from a Caddy handler node."""
+    tr = {
+        "rewrites": [],
+        "headers_up": [],
+        "headers_down": [],
+        "handle_response": [],
+    }
+    handler = node.get("handler")
+    if handler == "rewrite":
+        if node.get("strip_path_prefix"):
+            tr["rewrites"].append(f"strip {node['strip_path_prefix']}")
+        if node.get("strip_path_suffix"):
+            tr["rewrites"].append(f"strip suffix {node['strip_path_suffix']}")
+        if node.get("uri"):
+            tr["rewrites"].append(f"rewrite -> {node['uri']}")
 
-    Supports nested `subroute` handlers, path matchers, transport timeouts, and load-balancing policies.
+    # Dedicated headers handler
+    if handler == "headers":
+        req = node.get("request") or {}
+        for action, hmap in req.items():
+            if isinstance(hmap, dict):
+                for hk, hvals in hmap.items():
+                    val_str = ", ".join(str(v) for v in hvals) if isinstance(hvals, list) else str(hvals)
+                    tr["headers_up"].append(f"{action.upper()} {hk}: {val_str}")
+        resp = node.get("response") or {}
+        for action, hmap in resp.items():
+            if isinstance(hmap, dict):
+                for hk, hvals in hmap.items():
+                    val_str = ", ".join(str(v) for v in hvals) if isinstance(hvals, list) else str(hvals)
+                    tr["headers_down"].append(f"{action.upper()} {hk}: {val_str}")
+
+    # Reverse proxy inline headers, rewrite, and handle_response
+    if handler == "reverse_proxy":
+        # inline rewrite
+        rw = node.get("rewrite") or {}
+        if isinstance(rw, dict):
+            if rw.get("strip_path_prefix"):
+                tr["rewrites"].append(f"strip {rw['strip_path_prefix']}")
+            if rw.get("uri"):
+                tr["rewrites"].append(f"rewrite -> {rw['uri']}")
+
+        # inline headers
+        headers_blk = node.get("headers") or {}
+        if isinstance(headers_blk, dict):
+            req = headers_blk.get("request") or {}
+            for action, hmap in req.items():
+                if isinstance(hmap, dict):
+                    for hk, hvals in hmap.items():
+                        val_str = ", ".join(str(v) for v in hvals) if isinstance(hvals, list) else str(hvals)
+                        tr["headers_up"].append(f"{action.upper()} {hk}: {val_str}")
+            resp = headers_blk.get("response") or {}
+            for action, hmap in resp.items():
+                if isinstance(hmap, dict):
+                    for hk, hvals in hmap.items():
+                        val_str = ", ".join(str(v) for v in hvals) if isinstance(hvals, list) else str(hvals)
+                        tr["headers_down"].append(f"{action.upper()} {hk}: {val_str}")
+
+        # handle_response
+        hr_list = node.get("handle_response") or []
+        if isinstance(hr_list, list):
+            for hr in hr_list:
+                if isinstance(hr, dict):
+                    codes = hr.get("match", {}).get("status_code", [])
+                    codes_str = ", ".join(str(c) for c in codes) if codes else "any"
+                    tr["handle_response"].append(f"catch status [{codes_str}]")
+
+    return {k: v for k, v in tr.items() if v}
+
+
+def _parse_routes(routes):
+    """Return list of {hosts:[...], paths:[...], upstreams:[...], transport: {...}, load_balancing: {...}, transforms: {...}}.
+
+    Supports nested `subroute` handlers, path matchers, transport timeouts, load-balancing policies, and request/response transforms.
     """
     out = []
 
-    def walk(node, inherited_paths):
+    def walk(node, inherited_paths, inherited_transforms=None):
         nonlocal branches
+        current_transforms = dict(inherited_transforms or {})
         if isinstance(node, dict):
+            extracted = _extract_transforms(node)
+            for k, v in extracted.items():
+                current_transforms.setdefault(k, [])
+                for item in v:
+                    if item not in current_transforms[k]:
+                        current_transforms[k].append(item)
+
             if node.get("handler") == "reverse_proxy":
                 ups = [u.get("dial") for u in node.get("upstreams", []) if u.get("dial")]
                 paths = inherited_paths or ["/"]
@@ -116,6 +194,8 @@ def _parse_routes(routes):
                         entry["transport"] = tr_info
                     if lb_info:
                         entry["load_balancing"] = lb_info
+                    if current_transforms:
+                        entry["transforms"] = {k: list(v) for k, v in current_transforms.items() if v}
                     branches.append(entry)
 
             routes_block = node.get("routes")
@@ -125,17 +205,25 @@ def _parse_routes(routes):
                     for m in sub.get("match", []) or []:
                         for p in (m.get("path") or []):
                             sub_paths.append(p)
-                    walk(sub.get("handle"), sub_paths or inherited_paths)
+                    walk(sub.get("handle"), sub_paths or inherited_paths, current_transforms)
             for k, v in node.items():
                 if isinstance(v, (dict, list)) and not any(
                     key in node for key in ("handle", "terminal", "routes", "subroutes")
                 ):
-                    walk(v, inherited_paths)
+                    walk(v, inherited_paths, current_transforms)
             if "terminal" in node:
-                walk(node.get("terminal"), inherited_paths)
+                walk(node.get("terminal"), inherited_paths, current_transforms)
         elif isinstance(node, list):
+            accum_transforms = dict(inherited_transforms or {})
             for x in node:
-                walk(x, inherited_paths)
+                if isinstance(x, dict):
+                    extracted = _extract_transforms(x)
+                    for k, v in extracted.items():
+                        accum_transforms.setdefault(k, [])
+                        for item in v:
+                            if item not in accum_transforms[k]:
+                                accum_transforms[k].append(item)
+                walk(x, inherited_paths, accum_transforms)
 
     for r in routes or []:
         hosts = []
@@ -158,6 +246,7 @@ def _parse_routes(routes):
         deduped = []
         site_transport = {}
         site_lb = {}
+        site_transforms = {}
         for b in branches:
             key = (tuple(b["paths"]), tuple(b["upstreams"]))
             if key not in seen:
@@ -167,6 +256,12 @@ def _parse_routes(routes):
                 site_transport.update(b["transport"])
             if b.get("load_balancing"):
                 site_lb.update(b["load_balancing"])
+            if b.get("transforms"):
+                for k, v in b["transforms"].items():
+                    site_transforms.setdefault(k, [])
+                    for item in v:
+                        if item not in site_transforms[k]:
+                            site_transforms[k].append(item)
 
         branches = deduped
         # Aggregate upstreams across branches for the site-level view
@@ -183,6 +278,7 @@ def _parse_routes(routes):
                 "upstreams": all_ups,
                 "transport": site_transport or None,
                 "load_balancing": site_lb or None,
+                "transforms": site_transforms or None,
             })
     return out
 
@@ -339,6 +435,7 @@ async def refresh(force: bool = False):
                 "sparkline": sparkline,
                 "transport": s.get("transport"),
                 "load_balancing": s.get("load_balancing"),
+                "transforms": s.get("transforms"),
             })
 
         _state["sites"] = sites

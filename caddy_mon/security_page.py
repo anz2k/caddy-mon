@@ -3,7 +3,7 @@
 import time
 from html import escape
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 try:
     from fastapi import Request
@@ -35,7 +35,7 @@ def is_lan_ip(ip: str) -> bool:
     return False
 
 
-def is_known_proxy_ip(ip: str) -> tuple[bool, str]:
+def is_known_proxy_ip(ip: str) -> Tuple[bool, str]:
     """Check if an IP address belongs to known reverse-proxy CIDRs (Cloudflare, Docker NAT)."""
     ip = ip.strip().lower()
     # Cloudflare IPv4 ranges / prefixes

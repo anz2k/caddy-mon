@@ -243,3 +243,44 @@ def test_parse_transport_timeouts():
     assert s["load_balancing"] is not None
     assert s["load_balancing"]["policy"] == "least_conn"
     assert s["load_balancing"]["retries"] == 3
+
+
+def test_parse_transforms_rewrite_and_headers():
+    routes = [{
+        "match": [{"host": ["api.lope.ee"]}],
+        "handle": [
+            {
+                "handler": "rewrite",
+                "strip_path_prefix": "/api",
+                "uri": "/v1{http.request.uri.path}",
+            },
+            {
+                "handler": "headers",
+                "request": {
+                    "set": {"Host": ["internal-api:8080"]},
+                    "add": {"X-Custom": ["true"]}
+                },
+                "response": {
+                    "set": {"Strict-Transport-Security": ["max-age=31536000"]}
+                }
+            },
+            {
+                "handler": "reverse_proxy",
+                "upstreams": [{"dial": "192.168.1.60:8080"}],
+                "handle_response": [
+                    {"match": {"status_code": [404, 500]}}
+                ]
+            }
+        ]
+    }]
+    out = _parse_routes(routes)
+    assert len(out) == 1
+    s = out[0]
+    tr = s.get("transforms")
+    assert tr is not None
+    assert "strip /api" in tr["rewrites"]
+    assert "rewrite -> /v1{http.request.uri.path}" in tr["rewrites"]
+    assert any("Host: internal-api:8080" in h for h in tr["headers_up"])
+    assert any("X-Custom: true" in h for h in tr["headers_up"])
+    assert any("Strict-Transport-Security: max-age=31536000" in h for h in tr["headers_down"])
+    assert any("catch status [404, 500]" in hr for hr in tr["handle_response"])

@@ -27,9 +27,9 @@ def api_topology():
     edges = []
     node_ids = set()
 
-    def add_node(nid, label, col, kind, healthy=None):
+    def add_node(nid, label, col, kind, healthy=None, transforms=None):
         if nid not in node_ids:
-            nodes.append({"id": nid, "label": label, "col": col, "kind": kind, "healthy": healthy})
+            nodes.append({"id": nid, "label": label, "col": col, "kind": kind, "healthy": healthy, "transforms": transforms})
             node_ids.add(nid)
 
     for s in sites:
@@ -40,8 +40,20 @@ def api_topology():
             path_id = f"{site_id}|path|{path_label}"
             add_node(path_id, path_label, 1, "path")
             edges.append({"from": site_id, "to": path_id, "healthy": s["alive"]})
+
+            # Check transforms (rewrites, headers, handle_response)
+            tr = branch.get("transforms") or s.get("transforms") or {}
+            tr_summary = []
+            if tr.get("rewrites"):
+                tr_summary.append("rewrite: " + ", ".join(tr["rewrites"]))
+            if tr.get("headers_up"):
+                tr_summary.append("header: " + ", ".join(tr["headers_up"][:1]))
+            if tr.get("handle_response"):
+                tr_summary.append("handle_response")
+            tr_text = " · ".join(tr_summary) if tr_summary else None
+
             proxy_id = f"{path_id}|proxy"
-            add_node(proxy_id, "Caddy proxy", 2, "proxy")
+            add_node(proxy_id, "Caddy proxy", 2, "proxy", transforms=tr_text)
             edges.append({"from": path_id, "to": proxy_id, "healthy": s["alive"]})
             for up in branch.get("upstreams", []):
                 up_id = f"up:{up}"
@@ -100,9 +112,17 @@ async def topology(request: Request):
                 fill, stroke = "#1e293b", "#e11d48"
             else:
                 fill, stroke = "#1e293b", "#88929b"
+
+        tr_info = n.get("transforms")
+        extra_svg = ""
+        if tr_info:
+            extra_svg = f'<title>{escape(tr_info)}</title><text x="{x+75}" y="{y+31}" fill="#f59e0b" font-size="8" font-family="JetBrains Mono, monospace" text-anchor="middle">⚙ {escape(tr_info[:18])}</text>'
+
+        text_y = y + 17 if tr_info else y + 22
         svg.append(
             f'<g><rect x="{x}" y="{y}" width="150" height="36" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>'
-            f'<text x="{x+75}" y="{y+22}" fill="#f8fafc" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono, monospace">{escape(n["label"][:22])}</text></g>'
+            f'<text x="{x+75}" y="{text_y}" fill="#f8fafc" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono, monospace">{escape(n["label"][:22])}</text>'
+            f'{extra_svg}</g>'
         )
     svg.append('<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#88929b"/></marker></defs>')
     svg.append('</svg>')

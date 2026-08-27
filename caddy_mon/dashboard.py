@@ -492,6 +492,12 @@ async def dashboard(request: Request):
           <div id="modal-transport" class="bg-[#1e293b] border border-white/10 rounded-lg p-3 grid grid-cols-2 md:grid-cols-3 gap-3 font-mono text-xs"></div>
         </div>
 
+        <!-- Request Transforms & Header Rules -->
+        <div id="modal-transforms-container" class="hidden">
+          <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-outline mb-2">Request Transforms & Headers</h4>
+          <div id="modal-transforms" class="bg-[#1e293b] border border-white/10 rounded-lg p-3 flex flex-col gap-2 font-mono text-xs"></div>
+        </div>
+
         <!-- Recent Logs Table -->
         <div>
           <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-outline mb-2">Recent Requests (Access Log)</h4>
@@ -888,6 +894,30 @@ async def dashboard(request: Request):
           trContainer.classList.remove('hidden');
         }} else {{
           trContainer.classList.add('hidden');
+        }}
+
+        // Transforms & Headers (Item F)
+        const trf = site?.transforms || {{}};
+        let trfHtml = '';
+        if (trf.rewrites && trf.rewrites.length) {{
+          trfHtml += `<div><span class="text-status-maint font-bold text-[10px] uppercase block mb-1">Path Rewrites</span><ul class="list-disc pl-4 text-on-surface-variant text-[11px] font-mono">${{trf.rewrites.map(r => `<li>${{escapeHtml(r)}}</li>`).join('')}}</ul></div>`;
+        }}
+        if (trf.headers_up && trf.headers_up.length) {{
+          trfHtml += `<div><span class="text-primary font-bold text-[10px] uppercase block mb-1">Upstream Request Headers (header_up)</span><ul class="list-disc pl-4 text-on-surface-variant text-[11px] font-mono">${{trf.headers_up.map(h => `<li>${{escapeHtml(h)}}</li>`).join('')}}</ul></div>`;
+        }}
+        if (trf.headers_down && trf.headers_down.length) {{
+          trfHtml += `<div><span class="text-status-alive font-bold text-[10px] uppercase block mb-1">Response Headers (header_down)</span><ul class="list-disc pl-4 text-on-surface-variant text-[11px] font-mono">${{trf.headers_down.map(h => `<li>${{escapeHtml(h)}}</li>`).join('')}}</ul></div>`;
+        }}
+        if (trf.handle_response && trf.handle_response.length) {{
+          trfHtml += `<div><span class="text-pink-400 font-bold text-[10px] uppercase block mb-1">Handle Response</span><ul class="list-disc pl-4 text-on-surface-variant text-[11px] font-mono">${{trf.handle_response.map(hr => `<li>${{escapeHtml(hr)}}</li>`).join('')}}</ul></div>`;
+        }}
+
+        const trfContainer = document.getElementById('modal-transforms-container');
+        if (trfHtml) {{
+          document.getElementById('modal-transforms').innerHTML = trfHtml;
+          trfContainer.classList.remove('hidden');
+        }} else {{
+          trfContainer.classList.add('hidden');
         }}
 
         // Recent Logs

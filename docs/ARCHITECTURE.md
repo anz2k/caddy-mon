@@ -116,7 +116,7 @@ The app is split into a modular `caddy_mon` package; `app.py` is a thin FastAPI 
 | `caddy_mon/log_source.py` | Access-log ingestion: port stripping, client IP tracking, `get_host_recent_logs()`, `log_stats()` |
 | `caddy_mon/tls_source.py` | TLS cert parsing: automated ACME & manual cert discovery, expiry tracking |
 | `caddy_mon/dashboard.py` | Modern Tailwind dashboard with search, quick filters, sorting, Site Inspector, and CRUD modals |
-| `caddy_mon/topology.py` | Route-map API + SVG HTML page (`/topology`, `/api/topology`) |
+| `caddy_mon/topology.py` | Route-map API + SVG HTML page with transforms & rewrites (`/topology`, `/api/topology`) |
 | `caddy_mon/logs_page.py` | Log analytics HTML page + `/api/logs` |
 | `caddy_mon/tls_page.py` | TLS expiry HTML page + `/api/tls` |
-| `tests/` | Comprehensive unit tests (62 unit tests across 14 test suites) + live Caddy integration tests |
+| `tests/` | Comprehensive unit tests (63 unit tests across 14 test suites) + live Caddy integration tests |
