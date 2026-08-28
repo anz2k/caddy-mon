@@ -483,6 +483,7 @@ async def refresh(force: bool = False):
                 "sparkline": sparkline,
                 "transport": s.get("transport"),
                 "load_balancing": s.get("load_balancing"),
+                "health_checks": s.get("health_checks"),
                 "transforms": s.get("transforms"),
             })
 
