@@ -32,7 +32,7 @@ No Grafana, no Prometheus, no external TSDB — just Caddy, which you already ru
 - **Log analytics** — per-host request/5xx/error% over a time window (compact line on each dashboard card + full view at `/logs`, JSON at `/api/logs`)
 - **Embedded SQLite history** — persistent snapshots in `/data/caddy_mon.db` auto-pruned after 7 days
 - **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
-- **Domain grouping** — sites grouped by parent domain (lope.ee, kaaber.ee, lope.lan) on the dashboard
+- **Domain grouping** — sites grouped by parent domain (example.com, example.com, example.lan) on the dashboard
 - **Alias listing** — extra hostnames on a route are shown as a bulleted list under the primary host
 
 See [docs/](docs/) for architecture and per-feature details.

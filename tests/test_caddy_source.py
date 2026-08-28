@@ -132,15 +132,15 @@ def test_parse_deduplicates_identical_branches():
 
 def test_parse_aliases_multiple_hosts():
     routes = [{
-        "match": [{"host": ["mail.lope.ee", "autoconfig.lope.ee",
-                            "autodiscover.lope.ee"]}],
+        "match": [{"host": ["mail.example.com", "autoconfig.example.com",
+                            "autodiscover.example.com"]}],
         "handle": [{"handler": "reverse_proxy",
                     "upstreams": [{"dial": "192.168.1.60:80"}]}],
     }]
     out = _parse_routes(routes)
     assert len(out) == 1
     assert set(out[0]["hosts"]) == {
-        "mail.lope.ee", "autoconfig.lope.ee", "autodiscover.lope.ee"
+        "mail.example.com", "autoconfig.example.com", "autodiscover.example.com"
     }
 
 
@@ -195,25 +195,25 @@ def test_tld_group_single_label():
 
 def test_group_hosts_by_tld():
     sites = [
-        {"group": "lope.ee", "hosts": ["mail.lope.ee"]},
-        {"group": "kaaber.ee", "hosts": ["x.kaaber.ee"]},
-        {"group": "lope.ee", "hosts": ["pildid.lope.ee"]},
-        {"group": "lope.lan", "hosts": ["ha.lope.lan"]},
+        {"group": "example.com", "hosts": ["mail.example.com"]},
+        {"group": "example.org", "hosts": ["x.example.org"]},
+        {"group": "example.com", "hosts": ["pildid.example.com"]},
+        {"group": "example.lan", "hosts": ["ha.example.lan"]},
     ]
     groups = _group_hosts_by_tld(sites)
     by_group = {g["group"]: [s["hosts"][0] for s in g["sites"]] for g in groups}
-    assert by_group["lope.ee"] == ["mail.lope.ee", "pildid.lope.ee"]
-    assert by_group["kaaber.ee"] == ["x.kaaber.ee"]
-    assert by_group["lope.lan"] == ["ha.lope.lan"]
+    assert by_group["example.com"] == ["mail.example.com", "pildid.example.com"]
+    assert by_group["example.org"] == ["x.example.org"]
+    assert by_group["example.lan"] == ["ha.example.lan"]
     # sorted by group name
-    assert [g["group"] for g in groups] == ["kaaber.ee", "lope.ee", "lope.lan"]
+    assert [g["group"] for g in groups] == ["example.com", "example.lan", "example.org"]
 
 
 def test_parse_transport_timeouts():
     # Caddy JSON API expresses durations in nanoseconds (Go time.Duration).
     # 30s -> 30_000_000_000 ns, 3600s -> 3_600_000_000_000 ns, 15s -> 15_000_000_000 ns.
     routes = [{
-        "match": [{"host": ["stream.lope.ee"]}],
+        "match": [{"host": ["stream.example.com"]}],
         "handle": [{
             "handler": "reverse_proxy",
             "upstreams": [{"dial": "192.168.1.50:8080"}],
@@ -252,7 +252,7 @@ def test_parse_transport_timeouts():
 def test_parse_health_checks():
     """_parse_routes exposes health-check config (active vs passive)."""
     routes = [{
-        "match": [{"host": ["hc.lope.ee"]}],
+        "match": [{"host": ["hc.example.com"]}],
         "handle": [{
             "handler": "reverse_proxy",
             "upstreams": [{"dial": "192.168.1.60:8080"}],
@@ -286,7 +286,7 @@ def test_parse_health_checks():
 def test_parse_health_checks_absent():
     """No health_checks block -> site health_checks is None."""
     routes = [{
-        "match": [{"host": ["plain.lope.ee"]}],
+        "match": [{"host": ["plain.example.com"]}],
         "handle": [{
             "handler": "reverse_proxy",
             "upstreams": [{"dial": "192.168.1.70:8080"}],
@@ -298,7 +298,7 @@ def test_parse_health_checks_absent():
 
 def test_parse_transforms_rewrite_and_headers():
     routes = [{
-        "match": [{"host": ["api.lope.ee"]}],
+        "match": [{"host": ["api.example.com"]}],
         "handle": [
             {
                 "handler": "rewrite",
@@ -340,7 +340,7 @@ def test_parse_transforms_rewrite_and_headers():
 def test_parse_subroute_sequential_middleware():
     """Caddyfile with uri strip_prefix + headers + reverse_proxy generates nested subroutes with sequential middleware."""
     routes = [{
-        "match": [{"host": ["anne.kaaber.ee"]}],
+        "match": [{"host": ["anne.example.com"]}],
         "handle": [
             {
                 "handler": "subroute",
@@ -394,7 +394,7 @@ def test_parse_subroute_sequential_middleware():
     out = _parse_routes(routes)
     assert len(out) == 1
     s = out[0]
-    assert s["hosts"] == ["anne.kaaber.ee"]
+    assert s["hosts"] == ["anne.example.com"]
     assert s["upstreams"] == ["192.168.1.7:3001"]
     assert s["transport"] is not None
     assert s["transport"]["dial_timeout"] == "5s"

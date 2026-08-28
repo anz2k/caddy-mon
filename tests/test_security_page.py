@@ -25,7 +25,7 @@ def test_security_analytics_aggregates_top_clients_and_status_codes():
         # Client 1: LAN IP, 200 OK
         {
             "ts": now - 10,
-            "host": "pilv.lope.ee",
+            "host": "pilv.example.com",
             "client_ip": "192.168.1.100",
             "status": 200,
             "method": "GET",
@@ -34,7 +34,7 @@ def test_security_analytics_aggregates_top_clients_and_status_codes():
         # Client 1: LAN IP, 200 OK
         {
             "ts": now - 8,
-            "host": "pilv.lope.ee",
+            "host": "pilv.example.com",
             "client_ip": "192.168.1.100",
             "status": 200,
             "method": "GET",
@@ -43,7 +43,7 @@ def test_security_analytics_aggregates_top_clients_and_status_codes():
         # Client 2: WAN IP, 404 Not Found (Scanning)
         {
             "ts": now - 5,
-            "host": "www.lope.ee",
+            "host": "www.example.com",
             "client_ip": "203.0.113.195",
             "status": 404,
             "method": "GET",
@@ -52,7 +52,7 @@ def test_security_analytics_aggregates_top_clients_and_status_codes():
         # Client 2: WAN IP, 429 Rate Limit
         {
             "ts": now - 2,
-            "host": "www.lope.ee",
+            "host": "www.example.com",
             "client_ip": "203.0.113.195",
             "status": 429,
             "method": "POST",

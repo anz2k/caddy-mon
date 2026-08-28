@@ -45,7 +45,7 @@ def test_all_servers_are_read():
 def test_every_upstream_is_reachable():
     """Each reverse_proxy upstream dial should not be connection-refused.
 
-    This catches Caddyfile mistakes like a wrong IP (e.g. ha.lope.lan).
+    This catches Caddyfile mistakes like a wrong IP (e.g. ha.example.lan).
     """
     cfg = httpx.get(f"{CADDY_API}/config/apps/http/servers", timeout=5.0).json()
     unreachable = []

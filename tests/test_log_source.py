@@ -11,9 +11,9 @@ from caddy_mon import log_source
 
 
 def test_normalize_host():
-    assert log_source._normalize_host("mail.lope.ee:443") == "mail.lope.ee"
-    assert log_source._normalize_host("ha.lope.lan:8123") == "ha.lope.lan"
-    assert log_source._normalize_host("WWW.LOPE.EE") == "www.lope.ee"
+    assert log_source._normalize_host("mail.example.com:443") == "mail.example.com"
+    assert log_source._normalize_host("ha.example.lan:8123") == "ha.example.lan"
+    assert log_source._normalize_host("WWW.EXAMPLE.COM") == "www.example.com"
     assert log_source._normalize_host("") == ""
     assert log_source._normalize_host(None) == ""
 
@@ -37,7 +37,7 @@ def test_host_log_stats_matches_with_port_and_aliases():
         f.write(json.dumps({
             "ts": now - 100,
             "logger": "http.log.access",
-            "request": {"host": "mail.lope.ee:443", "uri": "/inbox"},
+            "request": {"host": "mail.example.com:443", "uri": "/inbox"},
             "status": 200,
             "duration": 0.05,
         }) + "\n")
@@ -45,7 +45,7 @@ def test_host_log_stats_matches_with_port_and_aliases():
         f.write(json.dumps({
             "ts": now - 50,
             "logger": "http.log.access",
-            "request": {"host": "autoconfig.lope.ee:443", "uri": "/mail/config-v1.1.xml"},
+            "request": {"host": "autoconfig.example.com:443", "uri": "/mail/config-v1.1.xml"},
             "status": 502,
             "duration": 0.02,
         }) + "\n")
@@ -53,7 +53,7 @@ def test_host_log_stats_matches_with_port_and_aliases():
         f.write(json.dumps({
             "ts": now - 20,
             "logger": "http.log.access",
-            "request": {"host": "pilv.lope.ee:443", "uri": "/login"},
+            "request": {"host": "pilv.example.com:443", "uri": "/login"},
             "status": 200,
             "duration": 0.08,
         }) + "\n")
@@ -64,13 +64,13 @@ def test_host_log_stats_matches_with_port_and_aliases():
             log_source._LOG_CACHE = []
 
             # Single host check with port stripping
-            stats_single = log_source.host_log_stats("mail.lope.ee", window=3600)
+            stats_single = log_source.host_log_stats("mail.example.com", window=3600)
             assert stats_single is not None
             assert stats_single["requests"] == 1
             assert stats_single["errors_5xx"] == 0
 
-            # Multi-host alias check (mail.lope.ee + autoconfig.lope.ee)
-            stats_aliases = log_source.host_log_stats(["mail.lope.ee", "autoconfig.lope.ee"], window=3600)
+            # Multi-host alias check (mail.example.com + autoconfig.example.com)
+            stats_aliases = log_source.host_log_stats(["mail.example.com", "autoconfig.example.com"], window=3600)
             assert stats_aliases is not None
             assert stats_aliases["requests"] == 2
             assert stats_aliases["errors_5xx"] == 1
@@ -78,7 +78,7 @@ def test_host_log_stats_matches_with_port_and_aliases():
 
             # Aggregated log_stats check
             summary = log_source.log_stats(window=3600)
-            assert len(summary["rows"]) == 3  # mail.lope.ee, autoconfig.lope.ee, pilv.lope.ee
+            assert len(summary["rows"]) == 3  # mail.example.com, autoconfig.example.com, pilv.example.com
             assert len(summary["recent_5xx"]) == 1
     finally:
         if os.path.exists(log_file):
@@ -90,17 +90,17 @@ def test_log_stats_percentiles():
     import time as _time
     now = _time.time()
     fake = [
-        {"ts": now - 10, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.005},
-        {"ts": now - 9, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.010},
-        {"ts": now - 8, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.020},
-        {"ts": now - 7, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.050},
-        {"ts": now - 6, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.200},
-        {"ts": now - 5, "host": "d.lope.ee", "uri": "/", "status": 500, "duration": 1.500},
+        {"ts": now - 10, "host": "d.example.com", "uri": "/", "status": 200, "duration": 0.005},
+        {"ts": now - 9, "host": "d.example.com", "uri": "/", "status": 200, "duration": 0.010},
+        {"ts": now - 8, "host": "d.example.com", "uri": "/", "status": 200, "duration": 0.020},
+        {"ts": now - 7, "host": "d.example.com", "uri": "/", "status": 200, "duration": 0.050},
+        {"ts": now - 6, "host": "d.example.com", "uri": "/", "status": 200, "duration": 0.200},
+        {"ts": now - 5, "host": "d.example.com", "uri": "/", "status": 500, "duration": 1.500},
     ]
     with mock.patch.object(log_source, "_LOG_CACHE", fake), \
          mock.patch("caddy_mon.log_source.ingest_logs"):
         s = log_source.log_stats(window=3600)
-    row = next(r for r in s["rows"] if r["host"] == "d.lope.ee")
+    row = next(r for r in s["rows"] if r["host"] == "d.example.com")
     # durations in ms: 5, 10, 20, 50, 200, 1500
     assert row["avg_ms"] == 297.5  # (5+10+20+50+200+1500)/6
     assert row["p50_ms"] == 35.0   # median of sorted [5,10,20,50,200,1500] interpolated

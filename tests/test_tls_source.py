@@ -42,19 +42,19 @@ def _make_cert(hostname: str, days_valid: int, tmpdir: str) -> str:
 
 def test_cert_status_reads_valid_cert():
     with tempfile.TemporaryDirectory() as d:
-        _make_cert("idm.lope.ee", days_valid=358, tmpdir=d)
+        _make_cert("idm.example.com", days_valid=358, tmpdir=d)
         with mock.patch.object(tls_source, "CERT_DIR", d):
             entries = tls_source.cert_status()
     assert len(entries) == 1
     e = entries[0]
-    assert e["hosts"] == ["idm.lope.ee"]
+    assert e["hosts"] == ["idm.example.com"]
     assert e["days_left"] > 300
     assert e["warn"] is False
 
 
 def test_cert_status_warns_when_close_to_expiry():
     with tempfile.TemporaryDirectory() as d:
-        _make_cert("soon.lope.ee", days_valid=10, tmpdir=d)
+        _make_cert("soon.example.com", days_valid=10, tmpdir=d)
         with mock.patch.object(tls_source, "CERT_DIR", d):
             entries = tls_source.cert_status()
     assert len(entries) == 1
@@ -72,29 +72,29 @@ def test_cert_status_skips_bad_pem():
     with tempfile.TemporaryDirectory() as d:
         with open(os.path.join(d, "broken.crt"), "w") as f:
             f.write("not a real cert")
-        _make_cert("ok.lope.ee", days_valid=100, tmpdir=d)
+        _make_cert("ok.example.com", days_valid=100, tmpdir=d)
         with mock.patch.object(tls_source, "CERT_DIR", d):
             entries = tls_source.cert_status()
-    # broken.crt is skipped, ok.lope.ee is parsed
+    # broken.crt is skipped, ok.example.com is parsed
     assert len(entries) == 1
-    assert entries[0]["hosts"] == ["ok.lope.ee"]
+    assert entries[0]["hosts"] == ["ok.example.com"]
 
 
 def test_site_tls_matches_by_san():
     fake = [{
-        "hosts": ["idm.lope.ee", "idm.lope.lan"],
+        "hosts": ["idm.example.com", "idm.example.lan"],
         "days_left": 200,
         "warn": False,
     }]
     with mock.patch.object(tls_source, "cert_status", return_value=fake):
-        result = _site_tls(["idm.lope.ee"])
+        result = _site_tls(["idm.example.com"])
     assert result == {"days_left": 200, "warn": False}
 
 
 def test_site_tls_returns_none_when_no_match():
     fake = [{"hosts": ["other.ee"], "days_left": 100, "warn": False}]
     with mock.patch.object(tls_source, "cert_status", return_value=fake):
-        result = _site_tls(["idm.lope.ee"])
+        result = _site_tls(["idm.example.com"])
     assert result is None
 
 

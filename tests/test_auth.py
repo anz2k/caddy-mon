@@ -15,15 +15,15 @@ def test_auth_disabled_when_empty():
 
 def test_auth_success_with_valid_credentials():
     with mock.patch.object(auth, "AUTH_USER", "admin"), \
-         mock.patch.object(auth, "AUTH_PASSWORD", "secret123"):
-        creds = SimpleNamespace(username="admin", password="secret123")
+         mock.patch.object(auth, "AUTH_PASSWORD", "testpassword123"):
+        creds = SimpleNamespace(username="admin", password="testpassword123")
         assert auth.require_auth(creds) == "admin"
 
 
 def test_auth_fails_with_invalid_credentials():
     with mock.patch.object(auth, "AUTH_USER", "admin"), \
-         mock.patch.object(auth, "AUTH_PASSWORD", "secret123"):
-        creds = SimpleNamespace(username="admin", password="wrongpassword")
+         mock.patch.object(auth, "AUTH_PASSWORD", "testpassword123"):
+        creds = SimpleNamespace(username="admin", password="wrongpassword123")
         with pytest.raises(Exception) as exc_info:
             auth.require_auth(creds)
         # Should raise 401
@@ -32,6 +32,6 @@ def test_auth_fails_with_invalid_credentials():
 
 def test_auth_fails_when_no_credentials_provided():
     with mock.patch.object(auth, "AUTH_USER", "admin"), \
-         mock.patch.object(auth, "AUTH_PASSWORD", "secret123"):
+         mock.patch.object(auth, "AUTH_PASSWORD", "testpassword123"):
         with pytest.raises(Exception):
             auth.require_auth(None)

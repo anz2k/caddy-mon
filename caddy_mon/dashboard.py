@@ -602,12 +602,12 @@ async def dashboard(request: Request):
       <form id="add-route-form" onsubmit="submitAddRoute(event)" class="p-5 flex flex-col gap-4 text-xs font-sans">
         <div class="flex flex-col gap-1">
           <label class="font-mono text-outline font-semibold">Primary Domain (FQDN) *</label>
-          <input type="text" id="add-domain" required placeholder="e.g. app.lope.ee" 
+          <input type="text" id="add-domain" required placeholder="e.g. app.example.com" 
                  class="bg-[#1e293b] border border-white/10 rounded-lg px-3 py-2 text-on-surface font-mono text-xs focus:border-primary outline-none" />
         </div>
         <div class="flex flex-col gap-1">
           <label class="font-mono text-outline font-semibold">Aliases (comma-separated, optional)</label>
-          <input type="text" id="add-aliases" placeholder="e.g. www.app.lope.ee, test.lope.ee" 
+          <input type="text" id="add-aliases" placeholder="e.g. www.app.example.com, test.example.com" 
                  class="bg-[#1e293b] border border-white/10 rounded-lg px-3 py-2 text-on-surface font-mono text-xs focus:border-primary outline-none" />
         </div>
         <div class="flex flex-col gap-1">

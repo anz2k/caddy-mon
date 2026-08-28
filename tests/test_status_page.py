@@ -7,7 +7,7 @@ from caddy_mon import status_page
 
 
 def test_is_private_host():
-    assert status_page._is_private_host("idm.lope.lan") is True
+    assert status_page._is_private_host("idm.example.lan") is True
     assert status_page._is_private_host("test.local") is True
     assert status_page._is_private_host("localhost") is True
     assert status_page._is_private_host("192.168.1.1") is True
@@ -29,8 +29,8 @@ def test_get_public_services_sanitizes_internal_hosts_and_dials():
             "upstreams": [{"upstream": "192.168.1.50:8080", "caddy_healthy": True}],  # Sensitive dial
         },
         {
-            "primary_host": "internal.lope.lan",
-            "group": "lope.lan",
+            "primary_host": "internal.example.lan",
+            "group": "example.lan",
             "alive": True,
             "latency_ms": 5.0,
             "uptime_24h": 100.0,

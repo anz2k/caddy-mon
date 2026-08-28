@@ -21,7 +21,7 @@ def temp_db():
 
 def test_get_host_extended_history_and_incidents():
     now = time.time()
-    fake_host = "test.lope.ee"
+    fake_host = "test.example.com"
 
     # Record some snapshots
     db.record_snapshot([{"primary_host": fake_host, "alive": True, "latency_ms": 45.0}], now=now - 300)
@@ -50,14 +50,14 @@ def test_get_host_extended_history_and_incidents():
 def test_get_host_recent_logs():
     now = time.time()
     fake_logs = [
-        {"ts": now - 30, "host": "mail.lope.ee", "uri": "/inbox", "method": "GET", "client_ip": "192.168.1.10", "status": 200},
-        {"ts": now - 20, "host": "autoconfig.lope.ee", "uri": "/config", "method": "GET", "client_ip": "192.168.1.10", "status": 200},
+        {"ts": now - 30, "host": "mail.example.com", "uri": "/inbox", "method": "GET", "client_ip": "192.168.1.10", "status": 200},
+        {"ts": now - 20, "host": "autoconfig.example.com", "uri": "/config", "method": "GET", "client_ip": "192.168.1.10", "status": 200},
         {"ts": now - 10, "host": "other.domain.ee", "uri": "/", "method": "GET", "client_ip": "8.8.8.8", "status": 200},
     ]
 
     with mock.patch.object(log_source, "_LOG_CACHE", fake_logs), \
          mock.patch("caddy_mon.log_source.ingest_logs"):
-        res = log_source.get_host_recent_logs(["mail.lope.ee", "autoconfig.lope.ee"], limit=10)
+        res = log_source.get_host_recent_logs(["mail.example.com", "autoconfig.example.com"], limit=10)
         assert len(res) == 2
-        assert res[0]["host"] == "autoconfig.lope.ee"
-        assert res[1]["host"] == "mail.lope.ee"
+        assert res[0]["host"] == "autoconfig.example.com"
+        assert res[1]["host"] == "mail.example.com"

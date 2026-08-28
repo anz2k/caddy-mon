@@ -70,8 +70,8 @@ def test_traffic_analytics_aggregation():
     _LOG_CACHE.extend([
         {
             "ts": now - 100,
-            "host": "anne.kaaber.ee",
-            "raw_host": "anne.kaaber.ee:443",
+            "host": "anne.example.com",
+            "raw_host": "anne.example.com:443",
             "uri": "/blog/post-1",
             "method": "GET",
             "client_ip": "1.2.3.4",
@@ -83,8 +83,8 @@ def test_traffic_analytics_aggregation():
         },
         {
             "ts": now - 50,
-            "host": "anne.kaaber.ee",
-            "raw_host": "anne.kaaber.ee",
+            "host": "anne.example.com",
+            "raw_host": "anne.example.com",
             "uri": "/blog/post-1",
             "method": "GET",
             "client_ip": "1.2.3.4",
@@ -96,8 +96,8 @@ def test_traffic_analytics_aggregation():
         },
         {
             "ts": now - 20,
-            "host": "anne.kaaber.ee",
-            "raw_host": "anne.kaaber.ee",
+            "host": "anne.example.com",
+            "raw_host": "anne.example.com",
             "uri": "/api/v1/status",
             "method": "GET",
             "client_ip": "5.6.7.8",
@@ -109,8 +109,8 @@ def test_traffic_analytics_aggregation():
         },
         {
             "ts": now - 10,
-            "host": "mail.lope.ee",
-            "raw_host": "mail.lope.ee",
+            "host": "mail.example.com",
+            "raw_host": "mail.example.com",
             "uri": "/login",
             "method": "GET",
             "client_ip": "9.9.9.9",
@@ -137,8 +137,8 @@ def test_traffic_analytics_aggregation():
     # Add a 4xx entry to verify it counts toward client_error_rate_pct but not error_rate_pct
     _LOG_CACHE.append({
         "ts": time.time() - 5,
-        "host": "anne.kaaber.ee",
-        "raw_host": "anne.kaaber.ee",
+        "host": "anne.example.com",
+        "raw_host": "anne.example.com",
         "uri": "/missing",
         "method": "GET",
         "client_ip": "1.2.3.4",
@@ -165,8 +165,8 @@ def test_traffic_analytics_aggregation():
 
     # Domains
     doms = {d["host"]: d["requests"] for d in data["domains"]}
-    assert doms["anne.kaaber.ee"] == 3
-    assert doms["mail.lope.ee"] == 1
+    assert doms["anne.example.com"] == 3
+    assert doms["mail.example.com"] == 1
 
 
 def test_traffic_analytics_host_filter():
@@ -175,7 +175,7 @@ def test_traffic_analytics_host_filter():
     _LOG_CACHE.extend([
         {
             "ts": now - 50,
-            "host": "anne.kaaber.ee",
+            "host": "anne.example.com",
             "uri": "/",
             "client_ip": "1.1.1.1",
             "status": 200,
@@ -185,7 +185,7 @@ def test_traffic_analytics_host_filter():
         },
         {
             "ts": now - 20,
-            "host": "mail.lope.ee",
+            "host": "mail.example.com",
             "uri": "/",
             "client_ip": "2.2.2.2",
             "status": 200,
@@ -195,10 +195,10 @@ def test_traffic_analytics_host_filter():
         }
     ])
 
-    data = get_traffic_analytics(window=3600, host_filter="anne.kaaber.ee")
+    data = get_traffic_analytics(window=3600, host_filter="anne.example.com")
     assert data["summary"]["total_requests"] == 1
     assert data["summary"]["unique_visitors"] == 1
-    assert data["domains"][0]["host"] == "anne.kaaber.ee"
+    assert data["domains"][0]["host"] == "anne.example.com"
 
 
 def test_db_hourly_traffic_upsert_and_retrieve():
@@ -206,7 +206,7 @@ def test_db_hourly_traffic_upsert_and_retrieve():
     hour_ts = 1720000000.0
     upsert_hourly_traffic(
         ts_hour=hour_ts,
-        host="test.lope.ee",
+        host="test.example.com",
         requests=150,
         unique_ips=45,
         bytes_sent=1024000,
@@ -215,7 +215,7 @@ def test_db_hourly_traffic_upsert_and_retrieve():
         avg_duration_ms=35.5,
     )
 
-    rows = get_traffic_history(host="test.lope.ee", since_ts=hour_ts)
+    rows = get_traffic_history(host="test.example.com", since_ts=hour_ts)
     assert len(rows) >= 1
     r = [row for row in rows if row["ts_hour"] == hour_ts][0]
     assert r["requests"] == 150

@@ -10,13 +10,13 @@ def test_status_feed_xml_generates_valid_rss():
     fake_incidents = [
         {
             "ts": time.time() - 300,
-            "host": "pilv.lope.ee",
+            "host": "pilv.example.com",
             "event_type": "DOWN",
             "details": "Connection refused on 192.168.1.5:11000",
         },
         {
             "ts": time.time() - 100,
-            "host": "pilv.lope.ee",
+            "host": "pilv.example.com",
             "event_type": "RECOVERED",
             "details": "Latency: 15.2ms",
         },
@@ -33,5 +33,5 @@ def test_status_feed_xml_generates_valid_rss():
         assert '<rss version="2.0">' in xml_content
         assert '<channel>' in xml_content
         assert '<title>' in xml_content
-        assert 'pilv.lope.ee' in xml_content
+        assert 'pilv.example.com' in xml_content
         assert '<item>' in xml_content

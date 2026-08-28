@@ -45,7 +45,7 @@ def _normalize_host(host: Optional[str]) -> str:
     """Normalize hostname by stripping port and converting to lowercase."""
     if not host:
         return ""
-    # Strip port if present (e.g. 'mail.lope.ee:443' -> 'mail.lope.ee')
+    # Strip port if present (e.g. 'mail.example.com:443' -> 'mail.example.com')
     return host.split(":")[0].strip().lower()
 
 

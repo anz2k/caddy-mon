@@ -22,7 +22,7 @@ def temp_db():
 async def test_alert_dispatched_on_site_down():
     now = time.time()
     # First state: Site is ALIVE
-    sites_alive = [{"primary_host": "mail.lope.ee", "alive": True, "latency_ms": 10.0, "upstreams": []}]
+    sites_alive = [{"primary_host": "mail.example.com", "alive": True, "latency_ms": 10.0, "upstreams": []}]
 
     with mock.patch.object(alerts, "TELEGRAM_BOT_TOKEN", "fake-token"), \
          mock.patch.object(alerts, "TELEGRAM_CHAT_ID", "12345"), \
@@ -34,7 +34,7 @@ async def test_alert_dispatched_on_site_down():
 
         # Step 2: Site transitions to DEAD
         sites_dead = [{
-            "primary_host": "mail.lope.ee",
+            "primary_host": "mail.example.com",
             "alive": False,
             "latency_ms": 0.0,
             "upstreams": [{"upstream": "192.168.1.10:80", "probe_ok": False, "error": "Connection refused"}],
@@ -43,19 +43,19 @@ async def test_alert_dispatched_on_site_down():
         assert mock_dispatch.call_count == 1
         call_args = mock_dispatch.call_args[0]
         assert "DOWN" in call_args[0]
-        assert "mail.lope.ee" in call_args[0]
+        assert "mail.example.com" in call_args[0]
 
         # Verify incident was logged in DB
         incidents = db.get_recent_incidents()
         assert len(incidents) == 1
-        assert incidents[0]["host"] == "mail.lope.ee"
+        assert incidents[0]["host"] == "mail.example.com"
         assert incidents[0]["event_type"] == "DOWN"
 
 
 @pytest.mark.asyncio
 async def test_alert_dispatched_on_site_recovered():
     now = time.time()
-    sites_dead = [{"primary_host": "mail.lope.ee", "alive": False, "latency_ms": 0.0}]
+    sites_dead = [{"primary_host": "mail.example.com", "alive": False, "latency_ms": 0.0}]
 
     with mock.patch.object(alerts, "TELEGRAM_BOT_TOKEN", "fake-token"), \
          mock.patch.object(alerts, "TELEGRAM_CHAT_ID", "12345"), \
@@ -65,20 +65,20 @@ async def test_alert_dispatched_on_site_recovered():
         await alerts.process_site_alerts(sites_dead, now=now)
 
         # Transitions to ALIVE
-        sites_alive = [{"primary_host": "mail.lope.ee", "alive": True, "latency_ms": 12.5}]
+        sites_alive = [{"primary_host": "mail.example.com", "alive": True, "latency_ms": 12.5}]
         await alerts.process_site_alerts(sites_alive, now=now + 10)
 
         assert mock_dispatch.call_count == 1
         call_args = mock_dispatch.call_args[0]
         assert "RECOVERED" in call_args[0]
-        assert "mail.lope.ee" in call_args[0]
+        assert "mail.example.com" in call_args[0]
 
 
 @pytest.mark.asyncio
 async def test_alert_throttled_by_cooldown():
     now = time.time()
-    sites_alive = [{"primary_host": "mail.lope.ee", "alive": True, "latency_ms": 10.0}]
-    sites_dead = [{"primary_host": "mail.lope.ee", "alive": False, "latency_ms": 0.0}]
+    sites_alive = [{"primary_host": "mail.example.com", "alive": True, "latency_ms": 10.0}]
+    sites_dead = [{"primary_host": "mail.example.com", "alive": False, "latency_ms": 0.0}]
 
     with mock.patch.object(alerts, "TELEGRAM_BOT_TOKEN", "fake-token"), \
          mock.patch.object(alerts, "TELEGRAM_CHAT_ID", "12345"), \

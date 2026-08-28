@@ -7,7 +7,7 @@ Detailed writeups of each caddy-mon feature.
 **What it adds:** A single web page showing every proxied site as a card with
 alive/dead status (green/red), latency in ms, and the last-update timestamp.
 Auto-refreshes every 12 seconds. Sites are grouped by parent domain
-(lope.ee, kaaber.ee, lope.lan), and extra hostnames (aliases) on a route are
+(example.com, example.com, example.lan), and extra hostnames (aliases) on a route are
 shown as a bulleted list under the primary host.
 
 **How it works:** `refresh()` polls Caddy, builds the site list, and the
@@ -69,7 +69,7 @@ restarts cleanly, and filters out caddy-mon's own `admin.api` polling noise.
 Parsed entries are kept in an in-memory ring buffer (last ~5000). `log_stats()`
 aggregates entries within the window into per-host stats.
 
-**Why:** Surfaces backend errors that health checks miss — e.g. "pildid.lope.ee
+**Why:** Surfaces backend errors that health checks miss — e.g. "pildid.example.com
 returned 502 N times in the last hour" shows up here even if Caddy still
 reports the upstream as healthy.
 
@@ -85,8 +85,8 @@ remain). A full table view is available at `/tls` with JSON at `/api/tls`.
 hosts against cert SANs via `_site_tls()` and attaches the result to the card.
 The `/tls` page lists all mounted certs sorted by urgency.
 
-**Why:** Manual (non-ACME) certificates — like `idm.lope.lan` and
-`trek.lope.lan` — do not auto-renew and can expire silently. This surfaces the
+**Why:** Manual (non-ACME) certificates — like `idm.example.lan` and
+`trek.example.lan` — do not auto-renew and can expire silently. This surfaces the
 countdown before it becomes an outage. (Sites covered by ACME-managed certs
 show `n/a` because those cert files are not mounted.)
 
