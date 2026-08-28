@@ -191,7 +191,7 @@ def logs_page(request: Request, window: int = 3600):
     </section>
 
     <section class="flex flex-col gap-3">
-      <h2 class="text-sm font-bold uppercase tracking-wider text-outline font-mono">Latency Distribution (Item D)</h2>
+      <h2 class="text-sm font-bold uppercase tracking-wider text-outline font-mono">Latency Distribution</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {latency_html}
       </div>
