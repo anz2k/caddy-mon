@@ -187,6 +187,8 @@ def _parse_routes(routes):
                         lb_info["retries"] = lb.get("retries")
                     if lb.get("try_duration"):
                         lb_info["try_duration"] = _fmt_duration(lb.get("try_duration"))
+                    if lb.get("try_interval"):
+                        lb_info["try_interval"] = _fmt_duration(lb.get("try_interval"))
 
                 for p in paths:
                     entry = {"paths": [p], "upstreams": ups}

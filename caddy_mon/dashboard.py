@@ -175,6 +175,14 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
     if tr.get("response_header_timeout"):
         tr_parts.append(f"resp {tr['response_header_timeout']}")
 
+    # Load-balancing policy badge (A: LB policy / retries)
+    lb = s.get("load_balancing") or {}
+    lb_parts = []
+    if lb.get("policy"):
+        lb_parts.append(f"lb {lb['policy']}")
+    if lb.get("retries") is not None:
+        lb_parts.append(f"retry {lb['retries']}")
+
     tr_html = ""
     if tr_parts:
         tr_text = " · ".join(tr_parts)
@@ -182,6 +190,15 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
           <div class="flex items-center gap-2 text-xs font-mono text-outline">
             <span class="material-symbols-outlined text-[14px]">timer</span>
             <span>{escape(tr_text)}</span>
+          </div>"""
+
+    lb_html = ""
+    if lb_parts:
+        lb_text = " · ".join(lb_parts)
+        lb_html = f"""
+          <div class="flex items-center gap-2 text-xs font-mono text-outline">
+            <span class="material-symbols-outlined text-[14px]">balance</span>
+            <span>{escape(lb_text)}</span>
           </div>"""
 
     maint_btn_text = "End Maint" if is_maint else "Maint"
@@ -237,6 +254,7 @@ def _render_card(s: Dict[str, Any], maintenance_map: Optional[Dict[str, Any]] = 
           {log_html}
           {tls_html}
           {tr_html}
+          {lb_html}
         </div>
 
         <!-- 4. Card Bottom Actions Toolbar -->
@@ -916,6 +934,8 @@ async def dashboard(request: Request):
         if (tr.keepalive_idle) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Keepalive Idle</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(tr.keepalive_idle)}}</span></div>`;
         if (lb.policy) trHtml += `<div><span class="text-outline text-[10px] uppercase block">LB Policy</span><span class="text-primary font-semibold font-mono">${{escapeHtml(lb.policy)}}</span></div>`;
         if (lb.retries !== undefined) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Retries</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(String(lb.retries))}}</span></div>`;
+        if (lb.try_duration) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Try Duration</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(lb.try_duration)}}</span></div>`;
+        if (lb.try_interval) trHtml += `<div><span class="text-outline text-[10px] uppercase block">Try Interval</span><span class="text-on-surface font-semibold font-mono">${{escapeHtml(lb.try_interval)}}</span></div>`;
 
         const trContainer = document.getElementById('modal-transport-container');
         if (trHtml) {{

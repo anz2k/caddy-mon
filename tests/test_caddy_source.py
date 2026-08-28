@@ -228,7 +228,9 @@ def test_parse_transport_timeouts():
             },
             "load_balancing": {
                 "selection_policy": {"policy": "least_conn"},
-                "retries": 3
+                "retries": 3,
+                "try_duration": 30_000_000_000,
+                "try_interval": 250_000_000
             }
         }],
     }]
@@ -243,6 +245,8 @@ def test_parse_transport_timeouts():
     assert s["load_balancing"] is not None
     assert s["load_balancing"]["policy"] == "least_conn"
     assert s["load_balancing"]["retries"] == 3
+    assert s["load_balancing"]["try_duration"] == "30s"
+    assert s["load_balancing"]["try_interval"] == "250ms"
 
 
 def test_parse_transforms_rewrite_and_headers():
