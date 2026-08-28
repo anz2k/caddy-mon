@@ -249,6 +249,53 @@ def test_parse_transport_timeouts():
     assert s["load_balancing"]["try_interval"] == "250ms"
 
 
+def test_parse_health_checks():
+    """_parse_routes exposes health-check config (active vs passive)."""
+    routes = [{
+        "match": [{"host": ["hc.lope.ee"]}],
+        "handle": [{
+            "handler": "reverse_proxy",
+            "upstreams": [{"dial": "192.168.1.60:8080"}],
+            "health_checks": {
+                "active": {
+                    "uri": "/healthz",
+                    "interval": 5_000_000_000,
+                    "timeout": 2_000_000_000,
+                },
+                "passive": {
+                    "max_fails": 3,
+                    "fail_duration": 10_000_000_000,
+                    "unhealthy_latency": 500_000_000,
+                },
+            },
+        }],
+    }]
+    out = _parse_routes(routes)
+    assert len(out) == 1
+    s = out[0]
+    assert s["health_checks"] is not None
+    hc = s["health_checks"]
+    assert hc["active_uri"] == "/healthz"
+    assert hc["active_interval"] == "5s"
+    assert hc["active_timeout"] == "2s"
+    assert hc["max_fails"] == 3
+    assert hc["fail_duration"] == "10s"
+    assert hc["unhealthy_latency"] == "500ms"
+
+
+def test_parse_health_checks_absent():
+    """No health_checks block -> site health_checks is None."""
+    routes = [{
+        "match": [{"host": ["plain.lope.ee"]}],
+        "handle": [{
+            "handler": "reverse_proxy",
+            "upstreams": [{"dial": "192.168.1.70:8080"}],
+        }],
+    }]
+    out = _parse_routes(routes)
+    assert out[0]["health_checks"] is None
+
+
 def test_parse_transforms_rewrite_and_headers():
     routes = [{
         "match": [{"host": ["api.lope.ee"]}],

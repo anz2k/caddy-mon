@@ -190,12 +190,34 @@ def _parse_routes(routes):
                     if lb.get("try_interval"):
                         lb_info["try_interval"] = _fmt_duration(lb.get("try_interval"))
 
+                # Extract health-check configuration (active vs passive)
+                hc = node.get("health_checks") or {}
+                hc_info = {}
+                if isinstance(hc, dict):
+                    active = hc.get("active")
+                    if isinstance(active, dict) and active.get("uri"):
+                        hc_info["active_uri"] = active.get("uri")
+                        if active.get("interval"):
+                            hc_info["active_interval"] = _fmt_duration(active.get("interval"))
+                        if active.get("timeout"):
+                            hc_info["active_timeout"] = _fmt_duration(active.get("timeout"))
+                    passive = hc.get("passive")
+                    if isinstance(passive, dict):
+                        if passive.get("max_fails") is not None:
+                            hc_info["max_fails"] = passive.get("max_fails")
+                        if passive.get("fail_duration"):
+                            hc_info["fail_duration"] = _fmt_duration(passive.get("fail_duration"))
+                        if passive.get("unhealthy_latency"):
+                            hc_info["unhealthy_latency"] = _fmt_duration(passive.get("unhealthy_latency"))
+
                 for p in paths:
                     entry = {"paths": [p], "upstreams": ups}
                     if tr_info:
                         entry["transport"] = tr_info
                     if lb_info:
                         entry["load_balancing"] = lb_info
+                    if hc_info:
+                        entry["health_checks"] = hc_info
                     if current_transforms:
                         entry["transforms"] = {k: list(v) for k, v in current_transforms.items() if v}
                     branches.append(entry)
@@ -268,6 +290,7 @@ def _parse_routes(routes):
         deduped = []
         site_transport = {}
         site_lb = {}
+        site_hc = {}
         site_transforms = {}
         for b in branches:
             key = (tuple(b["paths"]), tuple(b["upstreams"]))
@@ -278,6 +301,8 @@ def _parse_routes(routes):
                 site_transport.update(b["transport"])
             if b.get("load_balancing"):
                 site_lb.update(b["load_balancing"])
+            if b.get("health_checks"):
+                site_hc.update(b["health_checks"])
             if b.get("transforms"):
                 for k, v in b["transforms"].items():
                     site_transforms.setdefault(k, [])
@@ -300,6 +325,7 @@ def _parse_routes(routes):
                 "upstreams": all_ups,
                 "transport": site_transport or None,
                 "load_balancing": site_lb or None,
+                "health_checks": site_hc or None,
                 "transforms": site_transforms or None,
             })
     return out

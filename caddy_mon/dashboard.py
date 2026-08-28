@@ -517,6 +517,12 @@ async def dashboard(request: Request):
           <div id="modal-transforms" class="bg-[#1e293b] border border-white/10 rounded-lg p-3 flex flex-col gap-2 font-mono text-xs"></div>
         </div>
 
+        <!-- Health Check Configuration (Item B) -->
+        <div id="modal-health-container" class="hidden">
+          <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-outline mb-2">Health Check Configuration</h4>
+          <div id="modal-health" class="bg-[#1e293b] border border-white/10 rounded-lg p-3 flex flex-col gap-2 font-mono text-xs"></div>
+        </div>
+
         <!-- 24h Traffic & Visitor Summary -->
         <div id="modal-traffic-container">
           <div class="flex justify-between items-center mb-2">
@@ -961,13 +967,33 @@ async def dashboard(request: Request):
           trfHtml += `<div><span class="text-pink-400 font-bold text-[10px] uppercase block mb-1">Handle Response</span><ul class="list-disc pl-4 text-on-surface-variant text-[11px] font-mono">${{trf.handle_response.map(hr => `<li>${{escapeHtml(hr)}}</li>`).join('')}}</ul></div>`;
         }}
 
-        const trfContainer = document.getElementById('modal-transforms-container');
-        if (trfHtml) {{
-          document.getElementById('modal-transforms').innerHTML = trfHtml;
-          trfContainer.classList.remove('hidden');
-        }} else {{
-          trfContainer.classList.add('hidden');
+        // Health Checks (Item B: active vs passive)
+        const hc = site?.health_checks || {{}};
+        let hcHtml = '';
+        if (hc.active_uri) {{
+          hcHtml += `<div><span class="text-status-alive font-bold text-[10px] uppercase block mb-1">Active Health Check</span><ul class="list-disc pl-4 text-on-surface-variant text-[11px] font-mono">`;
+          hcHtml += `<li>polls ${{escapeHtml(hc.active_uri)}}</li>`;
+          if (hc.active_interval) hcHtml += `<li>interval ${{escapeHtml(hc.active_interval)}}</li>`;
+          if (hc.active_timeout) hcHtml += `<li>timeout ${{escapeHtml(hc.active_timeout)}}</li>`;
+          hcHtml += `</ul></div>`;
         }}
+        if (hc.max_fails !== undefined || hc.fail_duration || hc.unhealthy_latency) {{
+          hcHtml += `<div><span class="text-status-maint font-bold text-[10px] uppercase block mb-1">Passive Circuit Breaker</span><ul class="list-disc pl-4 text-on-surface-variant text-[11px] font-mono">`;
+          if (hc.max_fails !== undefined) hcHtml += `<li>max_fails ${{escapeHtml(String(hc.max_fails))}}</li>`;
+          if (hc.fail_duration) hcHtml += `<li>fail_duration ${{escapeHtml(hc.fail_duration)}}</li>`;
+          if (hc.unhealthy_latency) hcHtml += `<li>unhealthy_latency ${{escapeHtml(hc.unhealthy_latency)}}</li>`;
+          hcHtml += `</ul></div>`;
+        }}
+        if (!hc.active_uri && !hc.max_fails && !hc.fail_duration && !hc.unhealthy_latency) {{
+          hcHtml += `<div class="text-outline text-[11px] font-mono">Default passive gauge only (no explicit health_checks)</div>`;
+        }}
+
+        const hcContainer = document.getElementById('modal-health-container');
+        if (hcContainer) {{
+          document.getElementById('modal-health').innerHTML = hcHtml;
+          hcContainer.classList.remove('hidden');
+        }}
+
 
         // 24h Traffic Summary
         const trfSummary = data.traffic?.summary || {{}};
