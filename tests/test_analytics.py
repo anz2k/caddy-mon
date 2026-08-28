@@ -129,7 +129,29 @@ def test_traffic_analytics_aggregation():
     assert s["human_requests"] == 3
     assert s["bot_requests"] == 1
     assert s["errors_5xx"] == 1
+    # error_rate_pct now measures server errors (5xx) only — the 500 above = 25% of 4 requests
     assert s["error_rate_pct"] == 25.0
+    # client error rate (4xx) is tracked separately
+    assert s["client_error_rate_pct"] == 0.0
+
+    # Add a 4xx entry to verify it counts toward client_error_rate_pct but not error_rate_pct
+    _LOG_CACHE.append({
+        "ts": time.time() - 5,
+        "host": "anne.kaaber.ee",
+        "raw_host": "anne.kaaber.ee",
+        "uri": "/missing",
+        "method": "GET",
+        "client_ip": "1.2.3.4",
+        "status": 404,
+        "duration": 0.005,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0",
+        "referer": "-",
+        "bytes": 150,
+    })
+    data2 = get_traffic_analytics(window=3600)
+    assert data2["summary"]["errors_4xx"] == 1
+    assert data2["summary"]["client_error_rate_pct"] == 20.0  # 1 of 5
+    assert data2["summary"]["error_rate_pct"] == 20.0  # 1 of 5 (5xx still 1)
 
     # Top paths
     paths = {p["path"]: p["count"] for p in data["top_paths"]}

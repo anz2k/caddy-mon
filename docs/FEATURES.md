@@ -191,6 +191,8 @@ multiple servers (e.g. for different listen ports or site groups).
 
 **How it works:** `caddy_mon.log_source` parses Caddy JSON access logs to extract client IPs, request URIs, referrers, User-Agent strings, and response payloads. The engine categorizes traffic into human visitors vs search engine crawlers / bots (`Googlebot`, `Bingbot`, scanners), identifies top visited paths, referrers, browsers (Chrome, Safari, Firefox), and operating systems (Windows, macOS, iOS, Android). Hourly rollups are stored in SQLite (`traffic_hourly`), and the UI renders KPI cards, an hourly SVG timeline chart, and domain breakdown tables.
 
+**Error metrics:** The dashboard distinguishes **server errors (5xx)** from **client errors (4xx)**. The "Server Error Rate" KPI and the per-domain 5xx column measure only 5xx responses — these indicate real backend or availability problems. The 4xx column tracks client errors (404s, 400s) separately, since high 4xx volumes are often expected (autodiscover/autoconfig probing, scanners, missing paths) and should not mask genuine outages. The prior combined 4xx+5xx error rate has been replaced by this clearer split.
+
 ## Dynamic Route CRUD & Deployment
 
 **What it adds:** An interactive "➕ Add Site" modal on the dashboard and route deletion controls (`POST /api/routes`, `DELETE /api/routes/{host}`).

@@ -122,13 +122,16 @@ def get_traffic_analytics(window: int = 86400, host_filter: Optional[str] = None
 
         # Domain breakdown
         if h:
-            d_stat = domain_stats.setdefault(h, {"requests": 0, "unique_ips": set(), "bytes": 0, "errors": 0})
+            d_stat = domain_stats.setdefault(h, {"requests": 0, "unique_ips": set(), "bytes": 0, "errors_4xx": 0, "errors_5xx": 0})
             d_stat["requests"] += 1
             if ip:
                 d_stat["unique_ips"].add(ip)
             d_stat["bytes"] += b
-            if isinstance(status, int) and status >= 400:
-                d_stat["errors"] += 1
+            if isinstance(status, int):
+                if status < 500:
+                    d_stat["errors_4xx"] += 1
+                else:
+                    d_stat["errors_5xx"] += 1
 
         # Hourly bucket
         hour_ts = int(ts // 3600) * 3600
@@ -144,7 +147,11 @@ def get_traffic_analytics(window: int = 86400, host_filter: Optional[str] = None
 
     total_reqs = len(matched)
     avg_latency = (sum(durations) / len(durations) * 1000) if durations else 0.0
-    err_rate = round(((errors_4xx + errors_5xx) / total_reqs * 100), 1) if total_reqs else 0.0
+    # Server errors (5xx) indicate real backend/availability problems.
+    # Client errors (4xx) are often expected (scanners, autodiscover probing,
+    # missing paths) and are tracked separately so they do not mask real outages.
+    err_rate = round((errors_5xx / total_reqs * 100), 1) if total_reqs else 0.0
+    client_err_rate = round((errors_4xx / total_reqs * 100), 1) if total_reqs else 0.0
     human_pct = round((human_reqs / total_reqs * 100), 1) if total_reqs else 0.0
 
     # Build timeline (fill chronological buckets)
@@ -242,13 +249,15 @@ def get_traffic_analytics(window: int = 86400, host_filter: Optional[str] = None
     # Format domain table
     domains = []
     for d, stat in sorted(domain_stats.items(), key=lambda x: -x[1]["requests"]):
-        d_err_pct = round(stat["errors"] / stat["requests"] * 100, 1) if stat["requests"] else 0.0
+        d_srv_err_pct = round(stat["errors_5xx"] / stat["requests"] * 100, 1) if stat["requests"] else 0.0
+        d_cli_err_pct = round(stat["errors_4xx"] / stat["requests"] * 100, 1) if stat["requests"] else 0.0
         domains.append({
             "host": d,
             "requests": stat["requests"],
             "unique_visitors": len(stat["unique_ips"]),
             "bytes_formatted": _fmt_bytes(stat["bytes"]),
-            "error_pct": d_err_pct,
+            "error_pct": d_srv_err_pct,
+            "error_4xx_pct": d_cli_err_pct,
         })
 
     return {
@@ -266,6 +275,7 @@ def get_traffic_analytics(window: int = 86400, host_filter: Optional[str] = None
             "errors_4xx": errors_4xx,
             "errors_5xx": errors_5xx,
             "error_rate_pct": err_rate,
+            "client_error_rate_pct": client_err_rate,
         },
         "timeline": timeline,
         "top_paths": top_paths,
@@ -378,9 +388,10 @@ async def analytics(request: Request) -> HTMLResponse:
           <td class="p-2.5 font-mono text-xs text-right text-status-alive">{d['unique_visitors']}</td>
           <td class="p-2.5 font-mono text-xs text-right text-on-surface-variant">{d['bytes_formatted']}</td>
           <td class="p-2.5 font-mono text-xs text-right {'text-status-down' if d['error_pct'] > 5 else 'text-outline'}">{d['error_pct']}%</td>
+          <td class="p-2.5 font-mono text-xs text-right {'text-status-maint' if d['error_4xx_pct'] > 5 else 'text-outline'}">{d['error_4xx_pct']}%</td>
         </tr>"""
     if not domain_rows:
-        domain_rows = '<tr><td colspan="5" class="p-4 text-center text-outline text-xs">No per-domain traffic recorded</td></tr>'
+        domain_rows = '<tr><td colspan="6" class="p-4 text-center text-outline text-xs">No per-domain traffic recorded</td></tr>'
 
     html = f"""<!doctype html>
 <html class="dark" lang="en"><head>
@@ -513,9 +524,9 @@ async def analytics(request: Request) -> HTMLResponse:
       </div>
 
       <div class="bg-[#1e293b] border border-white/10 rounded-xl p-4 flex flex-col gap-1">
-        <span class="text-outline text-[11px] font-mono uppercase tracking-wider">Error Rate</span>
+        <span class="text-outline text-[11px] font-mono uppercase tracking-wider">Server Error Rate</span>
         <span class="text-2xl font-bold font-mono {'text-status-down' if summary['error_rate_pct'] > 5 else 'text-status-alive'}" id="kpi-error">{summary['error_rate_pct']}%</span>
-        <span class="text-[10px] text-outline">{summary['errors_4xx']} 4xx / {summary['errors_5xx']} 5xx</span>
+        <span class="text-[10px] text-outline">{summary['errors_5xx']} 5xx · {summary['errors_4xx']} 4xx client</span>
       </div>
     </div>
 
@@ -618,7 +629,8 @@ async def analytics(request: Request) -> HTMLResponse:
               <th class="p-2.5 text-right">Total Requests</th>
               <th class="p-2.5 text-right">Unique Visitors</th>
               <th class="p-2.5 text-right">Bandwidth</th>
-              <th class="p-2.5 text-right">Error Rate</th>
+              <th class="p-2.5 text-right">5xx</th>
+              <th class="p-2.5 text-right">4xx</th>
             </tr>
           </thead>
           <tbody id="domains-body">{domain_rows}</tbody>
