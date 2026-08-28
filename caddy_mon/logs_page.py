@@ -32,9 +32,38 @@ def logs_page(request: Request, window: int = 3600):
             <td class="p-3 font-mono text-xs {err_style}">{r['errors_5xx']}</td>
             <td class="p-3 font-mono text-xs {err_style}">{r['error_pct']}%</td>
             <td class="p-3 font-mono text-xs text-on-surface-variant">{r['avg_ms']}ms</td>
+            <td class="p-3 font-mono text-xs text-on-surface-variant">{r['p50_ms']}ms</td>
+            <td class="p-3 font-mono text-xs text-on-surface-variant">{r['p95_ms']}ms</td>
+            <td class="p-3 font-mono text-xs text-on-surface-variant">{r['p99_ms']}ms</td>
           </tr>"""
 
-    if not table_rows:
+    # Latency distribution section: per-host histogram bars (Item D)
+    latency_html = ""
+    for r in rows:
+        hist = r.get("latency_histogram") or []
+        total = sum(b["count"] for b in hist) or 1
+        bars = ""
+        for b in hist:
+            pct = (b["count"] / total) * 100 if total else 0
+            bars += f"""
+              <div class="flex items-center gap-2 text-[11px] font-mono">
+                <span class="w-16 text-outline">{escape(b['label'])}</span>
+                <div class="flex-1 h-2 rounded bg-white/5 overflow-hidden">
+                  <div class="h-full bg-status-alive" style="width:{pct:.0f}%"></div>
+                </div>
+                <span class="w-10 text-right text-on-surface-variant">{b['count']}</span>
+              </div>"""
+        latency_html += f"""
+        <div class="bg-[#1e293b] border border-white/10 rounded-lg p-3 flex flex-col gap-2">
+          <div class="text-xs font-mono font-semibold text-on-surface">{escape(r['host'])}</div>
+          <div class="flex flex-col gap-1">{bars}</div>
+          <div class="text-[10px] font-mono text-outline">avg {r['avg_ms']}ms · p50 {r['p50_ms']}ms · p95 {r['p95_ms']}ms · p99 {r['p99_ms']}ms</div>
+        </div>"""
+
+    if not latency_html:
+        latency_html = '<div class="p-4 text-center text-outline text-xs font-mono">No traffic recorded in this window</div>'
+
+
         table_rows = '<tr><td colspan="5" class="p-4 text-center text-outline text-xs font-mono">No traffic recorded in this window</td></tr>'
 
     recent = data["recent_5xx"]
@@ -130,6 +159,9 @@ def logs_page(request: Request, window: int = 3600):
               <th class="p-3">5xx Errors</th>
               <th class="p-3">Error %</th>
               <th class="p-3">Avg Latency</th>
+              <th class="p-3">p50</th>
+              <th class="p-3">p95</th>
+              <th class="p-3">p99</th>
             </tr>
           </thead>
           <tbody>
@@ -155,6 +187,13 @@ def logs_page(request: Request, window: int = 3600):
             {recent_html}
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="flex flex-col gap-3">
+      <h2 class="text-sm font-bold uppercase tracking-wider text-outline font-mono">Latency Distribution (Item D)</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {latency_html}
       </div>
     </section>
   </main>

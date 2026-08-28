@@ -339,14 +339,54 @@ def log_stats(window: int = 3600):
 
     rows = []
     for h, d in per_host.items():
-        avg_ms = (sum(d["durations"]) / len(d["durations"]) * 1000) if d["durations"] else 0.0
-        err_pct = (d["errors_5xx"] / d["requests"] * 100) if d["requests"] else 0.0
+        dur_ms = [x * 1000.0 for x in d["durations"]]
+        avg_ms = (sum(dur_ms) / len(dur_ms)) if dur_ms else 0.0
+        p50_ms = percentile(dur_ms, 50)
+        p95_ms = percentile(dur_ms, 95)
+        p99_ms = percentile(dur_ms, 99)
         rows.append({
             "host": h,
             "requests": d["requests"],
             "errors_5xx": d["errors_5xx"],
-            "error_pct": round(err_pct, 1),
+            "error_pct": round(d["errors_5xx"] / d["requests"] * 100, 1) if d["requests"] else 0.0,
             "avg_ms": round(avg_ms, 1),
+            "p50_ms": round(p50_ms, 1),
+            "p95_ms": round(p95_ms, 1),
+            "p99_ms": round(p99_ms, 1),
+            "latency_histogram": _latency_histogram(dur_ms),
         })
     rows.sort(key=lambda r: (-r["error_pct"], -r["requests"]))
     return {"window_seconds": window, "rows": rows, "recent_5xx": recent_5xx}
+
+
+def percentile(values, pct):
+    """Return the pct-th percentile (0-100) of a list of floats, or 0.0 if empty."""
+    if not values:
+        return 0.0
+    s = sorted(values)
+    # Linear interpolation between closest ranks (same method as numpy's default).
+    k = (len(s) - 1) * (pct / 100.0)
+    f = int(k)
+    c = min(f + 1, len(s) - 1)
+    if f == c:
+        return s[f]
+    return s[f] + (s[c] - s[f]) * (k - f)
+
+
+def _latency_histogram(dur_ms):
+    """Bucket request latencies (ms) into useful ranges for a distribution view."""
+    buckets = [
+        ("0-10ms", 0, 10),
+        ("10-50ms", 10, 50),
+        ("50-100ms", 50, 100),
+        ("100-300ms", 100, 300),
+        ("300-1000ms", 300, 1000),
+        ("1s+", 1000, float("inf")),
+    ]
+    out = []
+    # Round to 1 decimal to avoid float-precision edge cases (0.010s -> 9.999ms).
+    rounded = [round(x, 1) for x in dur_ms]
+    for label, lo, hi in buckets:
+        n = sum(1 for x in rounded if lo <= x < hi)
+        out.append({"label": label, "count": n})
+    return out

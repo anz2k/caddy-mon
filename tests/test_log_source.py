@@ -83,3 +83,36 @@ def test_host_log_stats_matches_with_port_and_aliases():
     finally:
         if os.path.exists(log_file):
             os.unlink(log_file)
+
+
+def test_log_stats_percentiles():
+    """log_stats computes p50/p95/p99 and a latency histogram from durations."""
+    import time as _time
+    now = _time.time()
+    fake = [
+        {"ts": now - 10, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.005},
+        {"ts": now - 9, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.010},
+        {"ts": now - 8, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.020},
+        {"ts": now - 7, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.050},
+        {"ts": now - 6, "host": "d.lope.ee", "uri": "/", "status": 200, "duration": 0.200},
+        {"ts": now - 5, "host": "d.lope.ee", "uri": "/", "status": 500, "duration": 1.500},
+    ]
+    with mock.patch.object(log_source, "_LOG_CACHE", fake), \
+         mock.patch("caddy_mon.log_source.ingest_logs"):
+        s = log_source.log_stats(window=3600)
+    row = next(r for r in s["rows"] if r["host"] == "d.lope.ee")
+    # durations in ms: 5, 10, 20, 50, 200, 1500
+    assert row["avg_ms"] == 297.5  # (5+10+20+50+200+1500)/6
+    assert row["p50_ms"] == 35.0   # median of sorted [5,10,20,50,200,1500] interpolated
+    assert row["p95_ms"] >= 200.0
+    assert row["p99_ms"] >= 200.0
+    hist = {b["label"]: b["count"] for b in row["latency_histogram"]}
+    assert hist["0-10ms"] == 1   # 5 ms
+    assert hist["10-50ms"] == 2  # 10, 20 ms
+    assert hist["50-100ms"] == 1 # 50 ms
+    assert hist["1s+"] == 1      # 1500 ms
+
+
+def test_percentile_empty():
+    assert log_source.percentile([], 95) == 0.0
+    assert log_source.percentile([1.0], 50) == 1.0
