@@ -654,7 +654,7 @@ async def dashboard(request: Request):
   <!-- Footer -->
   <footer class="bg-background full-width py-8 border-t border-white/5 mt-auto">
     <div class="max-w-container-max mx-auto px-gutter flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-sans text-on-surface-variant">
-      <div>Caddy Mon • Live reverse-proxy visibility</div>
+      <div>Caddy Mon • Live reverse-proxy visibility • v1.0.0-rc1</div>
       <div class="flex gap-6">
         <a class="hover:text-primary transition-colors" href="/status">Public Status</a>
         <a class="hover:text-primary transition-colors" href="/status/feed.xml">RSS Feed</a>

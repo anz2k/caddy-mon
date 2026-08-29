@@ -8,6 +8,8 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any, List
+
+from caddy_mon.version import __version__
 from fastapi import FastAPI, Request, Depends, Body
 from fastapi.responses import HTMLResponse, StreamingResponse
 
@@ -57,7 +59,16 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="caddy-mon", lifespan=lifespan)
+app = FastAPI(title="caddy-mon", version=__version__, lifespan=lifespan)
+
+
+# --------------------------------------------------------------------------
+# Version
+# --------------------------------------------------------------------------
+
+@app.get("/api/version")
+async def api_version():
+    return {"version": __version__}
 
 
 # --------------------------------------------------------------------------

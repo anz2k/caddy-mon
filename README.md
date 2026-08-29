@@ -8,79 +8,112 @@ No Grafana, no Prometheus, no external TSDB — just Caddy, which you already ru
 
 ## Features
 
-- **Live health dashboard** — live alive/dead + latency per proxied site with zero-flicker SSE updates
-- **Dynamic Route CRUD & Deployment** — create new reverse-proxy routes (`[+ Add Site]`), delete routes, and manage upstreams on the fly
-- **Audit Trail & Rollback Engine** — visual change log at `/audit` (`POST /api/routes`, `DELETE /api/routes/{host}`) with automatic pre-modification snapshots and one-click rollback
-- **Live Search & Status Filtering** — instant search (`/` shortcut), quick status filter pills (`All`, `Alive`, `Down`, `Maint`, `>100ms`), and multi-attribute sorting
-- **Transport Timeouts & Connection Insights** — parses and displays `dial_timeout`, `read_timeout`, and keepalive parameters per route (Caddy nanoseconds converted to human-readable `1h`/`30s`/`500ms`)
-- **Per-Upstream Health Status** — each upstream dial shows its own Caddy health badge (`Caddy healthy` / `Caddy unhealthy` / `Caddy ?`), so you see exactly which upstream is down in a multi-upstream site
-- **Site Deep-Dive Inspector Modal** — click any card to inspect 24h/7d latency stats (min/avg/max), 24h visitor totals, host-specific access logs, and incident timelines
-- **Traffic & Visitor Analytics** — server-side, privacy-friendly analytics at `/analytics` (unique visitors, pageviews, bandwidth, top paths, referrers, browsers/OS, human vs bot classification, and hourly SVG traffic chart)
-- **Automated ACME & Custom TLS Discovery** — monitors Let's Encrypt / ZeroSSL automatic certificates alongside manual certs with expiration countdowns
-- **Public Status Page & RSS Feed** — clean public status overview (`/status`) with 30-day uptime history bars and RSS 2.0 incident feed (`/status/feed.xml`)
-- **Security & Client Analytics** — top client IPs, 4xx/429 rate limit events, status code distribution, and LAN/WAN classification at `/security`
-- **Trusted Proxies & Client IP Audit** — diagnostic analyzer on `/security` detecting reverse-proxy/CDN IP masking (e.g. Cloudflare / Docker NAT) and suggesting `trusted_proxies` configuration
-- **Caddy Control Plane & Config Inspector** — active JSON configuration viewer with download and zero-downtime reload (`/caddy/config`)
-- **On-Demand Diagnostics** — instant "⚡ Test" probe button per card measuring status code, response headers, and latency
-- **Maintenance Mode** — toggle planned maintenance (`🛠️ Maint`) per site to suppress DOWN alerts during maintenance windows
-- **Optional Authentication** — HTTP Basic Auth (`AUTH_USER`/`AUTH_PASSWORD`) protecting admin routes while keeping `/status` public
-- **24h Uptime & Sparklines** — rolling 24h uptime % badge and mini SVG latency trendlines per card
-- **Incident alerting** — automatic Telegram and Webhook alerts when sites go DOWN or RECOVER
-- **Route Topology & Transforms** — SVG map of host → path → Caddy proxy → upstream (at `/topology`) with inline path rewrites (`strip /api`, `rewrite -> ...`) and custom headers (`header_up`/`header_down`)
-- **Multi-server Caddy** — reads routes from all Caddy HTTP servers (srv0, srv1, ...), not just srv0
-- **Combined health** — Caddy `healthy` metric + self-probe; connection-refused overrides a stale healthy=1
-- **Log analytics** — per-host request/5xx/error% over a time window (compact line on each dashboard card + full view at `/logs`, JSON at `/api/logs`)
-- **Embedded SQLite history** — persistent snapshots in `/data/caddy_mon.db` auto-pruned after 7 days
-- **Local timezone** — dashboard timestamp uses the host's local timezone (not UTC)
-- **Domain grouping** — sites grouped by parent domain (example.com, example.com, example.lan) on the dashboard
-- **Alias listing** — extra hostnames on a route are shown as a bulleted list under the primary host
+### Health & Uptime
 
-See [docs/](docs/) for architecture and per-feature details.
+- **Live health dashboard** — every proxied site as a card with alive/dead status, latency, and last-update timestamp; grouped by parent domain, with alias hostnames listed under the primary host
+- **Combined health check** — Caddy's `caddy_reverse_proxy_upstreams_healthy` gauge + caddy-mon's own HTTP probe; a stale `healthy=1` with `connection refused` is treated as dead
+- **Per-upstream health** — each upstream dial carries its own badge (`healthy` / `unhealthy` / `?`) so you see exactly which replica is down in a multi-upstream site
+- **24 h uptime & sparklines** — rolling uptime percentage and a mini SVG latency trendline on every card; data persisted in embedded SQLite and pruned after 7 days
+- **Site deep-dive modal** — click any card for 24 h / 7 d latency stats (min/avg/max), per-site access logs, incident timeline, and visitor totals
+- **Zero-flicker live updates** — Server-Sent Events (`/api/events`) push state changes to the browser without full-page reloads
 
-## What it does
+### Proxy Visibility
 
-- Polls the Caddy admin API (`caddy-proxy:2019`) every 10s for:
-  - all routes + their host matchers and upstream dials (from ALL servers, srv0/srv1/...)
-  - `caddy_reverse_proxy_upstreams_healthy` metric (0/1 per upstream)
-- Runs a self-made HTTP GET probe to each upstream (latency + status)
-- Reads the Caddy access log (`/caddy-logs/access.log`) for request/error analytics
-- Serves web pages on `:8080` (dashboard, topology, logs)
+- **Transport & connection details** — `dial_timeout`, `read_timeout`, `write_timeout`, `response_header_timeout`, and `keepalive` parsed from the Caddy JSON API (nanoseconds → `1h`/`30s`/`500ms`) and shown on cards and in the deep-dive modal
+- **Load-balancing** — `selection_policy` (`round_robin`, `least_conn`, `ip_hash`, …), `retries`, `try_duration`, and `try_interval` surfaced per site
+- **Health-check configuration** — active checks (`uri`/`interval`/`timeout`) and passive circuit-breaker thresholds (`max_fails`/`fail_duration`/`unhealthy_latency`) shown in the deep-dive modal
+- **Request transforms & header rules** — `rewrite` (strip prefix, URI rewrite), upstream request headers, response headers, and `handle_response` fallbacks rendered on the topology map and in the deep-dive modal
+- **Route topology** — SVG map `host → path → Caddy proxy → upstream` at `/topology` (JSON at `/api/topology`), with path matchers, nested `subroute` handlers, and transform badges
+- **Multi-server Caddy** — discovers routes from all HTTP servers (`srv0`, `srv1`, …), not just `srv0`
 
-No Prometheus, no Grafana, no TSDB. Just Caddy, which you already have.
+### Traffic & Analytics
 
-## How health is decided
+- **Log analytics** — per-host request / 5xx / error % over a configurable window; compact summary on each card and full view at `/logs` (JSON at `/api/logs?window=N`); recent 5xx errors with host, status, and URI
+- **Latency distribution** — per-host `avg` / `p50` / `p95` / `p99` and a bucketed histogram (`0–10 ms` … `1 s+`) computed from the access-log `duration` field; shown on `/logs`
+- **Traffic & visitor analytics** — privacy-friendly, server-side analytics at `/analytics` (JSON at `/api/analytics`): unique visitors, pageviews, bandwidth, top paths, referrers, browsers / OS, human vs bot classification, and an hourly SVG timeline; 24 h visitor summary also embedded in the deep-dive modal
+
+### Operations
+
+- **On-demand diagnostics** — `⚡ Test` button on each card (`POST /api/probe/{host}`) for an immediate upstream probe with status code, headers, and latency
+- **Maintenance mode** — `🛠️ Maint` toggle per site; while enabled the dashboard shows `MAINTENANCE` and `DOWN` alerts are suppressed
+- **Live search & filtering** — instant search (`/` shortcut), status pills (`All` / `Alive` / `Down` / `Maint` / `>100 ms`), and sorting by domain group, latency, uptime, or alphabetically
+- **Caddy control plane** — live JSON config inspector with download and zero-downtime reload at `/caddy/config` (`GET /api/caddy/config`, `POST /api/caddy/reload`)
+- **Dynamic route CRUD** — create and delete reverse-proxy routes from the dashboard (`POST /api/routes`, `DELETE /api/routes/{host}`) with FQDN/upstream validation and automatic TLS provisioning (Let's Encrypt / ZeroSSL)
+- **Audit trail & rollback** — every route change and rollback is logged to SQLite with operator, timestamp, and before/after payload; restore any snapshot from `/audit` (`POST /api/caddy/rollback/{id}`)
+- **Incident alerting** — Telegram and generic webhook (Discord/Slack) notifications on `ALIVE → DEAD` and `DEAD → ALIVE` transitions, with cooldown (`ALERT_COOLDOWN_MINUTES`) and an `incident_events` archive
+
+### Security & TLS
+
+- **Security & client analytics** — top client IPs, LAN vs WAN split, status-code distribution (`2xx`/`3xx`/`4xx`/`429`/`5xx`), and suspicious-request listing at `/security`
+- **Trusted-proxy audit** — detects `X-Forwarded-For` masking (e.g. Cloudflare / Docker NAT gateway) and suggests the correct `trusted_proxies` Caddyfile setting when >80 % of traffic appears to come from a single gateway
+- **TLS expiry monitoring** — `🔒 NNd` countdown on each card and full inventory at `/tls` (JSON at `/api/tls`); parses both manually mounted certs (`/caddy-certs`) and ACME-managed certs (`/caddy-data`, `/data/caddy/certificates`) via `cryptography`
+- **Public status page** — clean, sanitized overview at `/status` (30-day daily uptime bars, incident timeline) plus JSON at `/api/status` and an RSS 2.0 feed at `/status/feed.xml`; internal IPs and `.lan`/`.local` hosts are hidden
+- **Optional authentication** — HTTP Basic Auth (`AUTH_USER`/`AUTH_PASSWORD`) protecting all admin routes while keeping `/status` public; local timezone (`TZ`) for timestamps
+
+See [docs/FEATURES.md](docs/FEATURES.md) for per-feature details and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for internals.
+
+## How it works
+
+- Polls the Caddy admin API (`http://caddy-proxy:2019` by default) every 10 s for:
+  - all routes + host matchers and upstream dials (from **all** servers, `srv0`/`srv1`/…)
+  - the `caddy_reverse_proxy_upstreams_healthy{upstream="IP:port"}` gauge (`0`/`1` per upstream)
+- Probes each unique upstream with an HTTP `GET` (3 s timeout) to measure latency and status
+- Tails the Caddy JSON access log (`/caddy-logs/access.log`) incrementally (tracks file position + inode, filters `admin.api` noise, keeps last ~5 000 entries in memory) for request/error/latency analytics
+- Serves the dashboard and all feature pages on `:8080`
+
+No Prometheus, no Grafana, no TSDB — just Caddy, which you already have.
+
+### How health is decided
 
 Health combines Caddy's `healthy` metric with caddy-mon's own probe:
 
-- Caddy reports `healthy=0` → site is **DEAD**
-- Caddy reports `healthy=1` but the probe gets **connection refused** → site is
-  **DEAD** (Caddy's health check was stale/wrong)
-- Caddy reports `healthy=1` and the probe fails with a timeout (not refused) →
-  site is **ALIVE** (Caddy knows the backend state)
+- Caddy reports `healthy=0` → **DEAD**
+- Caddy reports `healthy=1` but the probe gets **connection refused** → **DEAD** (stale Caddy signal)
+- Caddy reports `healthy=1` and the probe times out (not refused) → **ALIVE** (Caddy knows the backend state)
 - Caddy reports no health (`None`) → the probe is the only signal
 
-## Run
+## Quick start
 
 ```bash
-cd <deployment-dir>
+# 1. copy env template and fill in your local paths
+cp .env.example .env
+# edit CADDY_STACK_DIR to point at your Caddy stack (contains logs/ and certs/)
+
+# 2. build and run (joins the existing caddy_default network)
 docker compose up -d --build
-# then open the dashboard in a browser on port 8080
+
+# 3. open the dashboard
+# http://<host>:8080        — dashboard (protected if AUTH_* is set)
+# http://<host>:8080/status — public status page (always open)
 ```
 
-(`<deployment-dir>` is the directory on the host where this container runs.)
+`<deployment-dir>` is the directory on the host where this compose file runs. Port `8080` does not need to be exposed to the WAN — LAN only.
 
-## Config
+## Configuration
 
-`docker-compose.yml`:
-- joins the `caddy_default` network (so `caddy-proxy` DNS resolves)
-- mounts the Caddy access-log directory read-only at `/caddy-logs` (for log analytics)
-- port `8080` does not need to be exposed to WAN — LAN only
-- `CADDY_API` env var overrides the admin API URL (default `http://caddy-proxy:2019`)
+`docker-compose.yml` joins the `caddy_default` network (so the DNS name `caddy-proxy` resolves), mounts the Caddy access-log directory read-only at `/caddy-logs`, optionally mounts TLS cert directories, and persists history in `./data:/data`.
+
+All settings are environment variables (see [.env.example](.env.example)):
+
+| Variable | Default | Description |
+|---|---|---|
+| `CADDY_STACK_DIR` | *(required)* | Host path to your Caddy stack (must contain `logs/` and `certs/` subdirs) |
+| `CADDY_API` | `http://caddy-proxy:2019` | Caddy admin API base URL |
+| `LOG_PATH` | `/caddy-logs/access.log` | Access-log path inside the container |
+| `DB_PATH` | `/data/caddy_mon.db` | SQLite database file |
+| `HISTORY_RETENTION_DAYS` | `7` | Days to keep `site_snapshots` history |
+| `TZ` | `Europe/Tallinn` | Timezone for dashboard timestamps |
+| `AUTH_USER` / `AUTH_PASSWORD` | *(empty = open)* | Basic Auth for admin routes; `/status` stays public |
+| `STATUS_TITLE` | `System Status` | Title shown on the public status page |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | *(empty)* | Telegram alerting |
+| `WEBHOOK_URL` | *(empty)* | Generic webhook (Discord/Slack) alerting |
+| `ALERT_COOLDOWN_MINUTES` | `15` | Alert cooldown to suppress flapping |
+
+`.env` is gitignored — never commit secrets.
 
 ## Caddy requirement
 
-The Caddy admin API must be reachable from this container. In `Caddyfile`,
-the global options block needs:
+The Caddy admin API must be reachable from the `caddy-mon` container. In your `Caddyfile` global options:
 
 ```
 {
@@ -88,32 +121,86 @@ the global options block needs:
 }
 ```
 
-(Without this, the admin API only listens on `localhost` and is unreachable
-from the `caddy-mon` container. Port 2019 is NOT published to the host, so
-it stays reachable only to containers on the `caddy_default` network.)
+Without this, the admin API only listens on `localhost` and is unreachable from `caddy-mon`. Do **not** publish port `2019` to the host — it stays reachable only to containers on the `caddy_default` network.
+
+Access-log must be JSON. Example (already the default in most Caddy images):
+
+```json
+{
+  "logging": {
+    "logs": {
+      "default": {
+        "writer": { "output": "file", "filename": "/data/caddy/logs/access.log" },
+        "encoder": { "format": "json" }
+      }
+    }
+  }
+}
+```
+
+## API reference
+
+All JSON APIs require Basic Auth when `AUTH_*` is set, except the three public status routes.
+
+| Route | Purpose | Access |
+|---|---|---|
+| `GET /status` | Public status page (30-day bars, incident timeline) | Public |
+| `GET /api/status` | Sanitized status JSON | Public |
+| `GET /status/feed.xml` | RSS 2.0 incident feed | Public |
+| `GET /` | Dashboard (cards, sparklines, search, SSE) | Protected |
+| `GET /api/state` | `{last_update, sites[], errors[]}` | Protected |
+| `GET /api/events` | Server-Sent Events stream | Protected |
+| `GET /api/history/{host}` | `{host, uptime_24h, sparkline[]}` | Protected |
+| `GET /api/site/{host}/details` | Deep-dive: history, recent logs, incidents, traffic | Protected |
+| `GET /api/export` | Full infrastructure export | Protected |
+| `POST /api/routes` | Create reverse-proxy route (with snapshot & audit) | Protected |
+| `DELETE /api/routes/{host}` | Delete reverse-proxy route | Protected |
+| `GET /audit` | Audit trail & snapshot manager (HTML) | Protected |
+| `GET /api/audit` | `{audit_logs[], snapshots[]}` | Protected |
+| `POST /api/caddy/rollback/{id}` | Roll back Caddy config to a snapshot | Protected |
+| `GET /api/incidents` | Recent `DOWN`/`RECOVERED` events | Protected |
+| `POST /api/probe/{host}` | On-demand upstream probe | Protected |
+| `POST /api/maintenance/{host}` | Toggle maintenance mode | Protected |
+| `GET /api/maintenance` | Active maintenance map | Protected |
+| `GET /security` | Security & client analytics (HTML) | Protected |
+| `GET /api/security` | `{status_distribution, top_clients[], suspicious_requests[]}` | Protected |
+| `GET /caddy/config` | Caddy JSON config inspector (HTML) | Protected |
+| `GET /api/caddy/config` | Raw Caddy JSON config | Protected |
+| `POST /api/caddy/reload` | Zero-downtime Caddy reload | Protected |
+| `GET /topology` | Route map `host → path → proxy → upstream` (SVG) | Protected |
+| `GET /api/topology` | `{nodes[], edges[]}` | Protected |
+| `GET /analytics` | Traffic & visitor analytics (HTML) | Protected |
+| `GET /api/analytics` | `{summary, timeline[], top_paths[], browsers[], …}` | Protected |
+| `GET /logs` | Log analytics with latency distribution (HTML) | Protected |
+| `GET /api/logs` | `{window_seconds, rows[], recent_5xx[]}` | Protected |
+| `GET /tls` | TLS expiry inventory (HTML) | Protected |
+| `GET /api/tls` | `{entries[], warn_days}` | Protected |
 
 ## Testing
 
 ```bash
-# install dev deps (pytest, cryptography) in a venv
+# install dev deps in a venv
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 
 # unit tests (no network needed)
 pytest tests/test_*.py -v
 
-# live Caddy config tests (needs Caddy admin API reachable; auto-skip otherwise)
+# live Caddy integration tests (needs Caddy admin API reachable; auto-skipped otherwise)
 pytest tests/test_caddy_config.py -v
 ```
 
-Unit tests cover route parsing (`_parse_routes`), health-metric parsing
-(`_parse_healthy`), TLS cert parsing (`cert_status`), TLD grouping, SQLite
-persistence & 24h uptime calculations (`test_db.py`), incident alerting & cooldown
-(`test_alerts.py`), and real-time SSE broadcasting (`test_sse.py`). The
-`test_caddy_config.py` integration tests probe the live Caddy admin API and
-every upstream dial.
+Coverage includes route parsing (`_parse_routes`), health-metric parsing (`_parse_healthy`), transport / load-balancing / health-check / transform extraction, TLD grouping, access-log ingestion and latency percentiles, TLS cert parsing, SQLite persistence and 24 h uptime, alerting and cooldown, SSE broadcasting, diagnostics, and maintenance mode. `test_caddy_config.py` probes the live Caddy admin API and every upstream dial.
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how caddy-mon works internally
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data flow, endpoint table, and code layout
 - [docs/FEATURES.md](docs/FEATURES.md) — detailed per-feature writeups
+
+## Tech stack
+
+Python 3.12 · FastAPI · uvicorn · httpx · cryptography · SQLite · Docker · Tailwind CSS
+
+## License
+
+[MIT](LICENSE)

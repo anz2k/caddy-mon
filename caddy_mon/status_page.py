@@ -319,7 +319,7 @@ async def status_page(request: Request) -> HTMLResponse:
 
     <!-- Footer -->
     <footer class="text-center text-xs text-on-surface-variant flex justify-center items-center gap-3 mt-4">
-      <span>Powered by caddy-mon</span>
+      <span>Powered by caddy-mon v1.0.0-rc1</span>
       <span>•</span>
       <span>Updated {datetime.now(TZ).strftime('%H:%M:%S')}</span>
       <span>•</span>
